@@ -24,7 +24,7 @@
             background-color: #050a18;
             color: #ffffff;
             user-select: none;
-            webkit-tap-highlight-color: transparent;
+            -webkit-tap-highlight-color: transparent;
             width: 100vw;
             height: 100vh;
         }
@@ -41,18 +41,26 @@
         body.mobile-scanner-mode .remove-btn,
         body.mobile-scanner-mode .btn-danger-glass {
             display: none !important;
-            
         }
-        
-/* ปลดล็อกให้หน้าจอมือถือเลื่อนขึ้นลงได้ */
+
+        /* ปลดล็อกให้หน้าจอมือถือเลื่อนขึ้นลงได้ */
+        html:has(body.mobile-scanner-mode),
         body.mobile-scanner-mode {
             overflow-y: auto !important;
             overflow-x: hidden !important;
             height: auto !important;
             min-height: 100vh !important;
             -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
         }
-        
+
+        body.mobile-scanner-mode #mobile-view {
+            display: block !important;
+            height: auto !important;
+            min-height: 100vh;
+            overflow-y: visible !important;
+        }
+
         /* แอนิเมชันแสงจันทร์เรืองรอง */
         @keyframes moonGlow {
             0%, 100% { box-shadow: 0 0 60px 20px rgba(254, 240, 138, 0.4), 0 0 120px 45px rgba(253, 224, 71, 0.22); }
@@ -2807,5 +2815,3 @@
     </script>
 </body>
 </html>
-
-
