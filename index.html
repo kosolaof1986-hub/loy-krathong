@@ -41,13 +41,18 @@
         body.mobile-scanner-mode .remove-btn,
         body.mobile-scanner-mode .btn-danger-glass {
             display: none !important;
+            
+        }
+        
+/* ปลดล็อกให้หน้าจอมือถือเลื่อนขึ้นลงได้ */
+        body.mobile-scanner-mode {
             overflow-y: auto !important;
-            overflow-x: hidden;
+            overflow-x: hidden !important;
             height: auto !important;
-            min-height: 100vh;
+            min-height: 100vh !important;
             -webkit-overflow-scrolling: touch;
         }
-
+        
         /* แอนิเมชันแสงจันทร์เรืองรอง */
         @keyframes moonGlow {
             0%, 100% { box-shadow: 0 0 60px 20px rgba(254, 240, 138, 0.4), 0 0 120px 45px rgba(253, 224, 71, 0.22); }
