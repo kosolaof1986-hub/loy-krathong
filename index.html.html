@@ -3,32 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ลอยกระทงออนไลน์ - สืบสานประเพณีไทย</title>
-    <!-- โหลด Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- โหลดฟอนต์ภาษาไทยที่สวยงาม (Prompt & Sarabun) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- โหลดไลบรารีสร้าง QR Code -->
+    <title>ลอยกระทงออนไลน์ - Zero-Config QR & PeerJS Sync</title>
+    <!-- ไลบรารีสร้าง QR Code สำหรับสแกนด้วยมือถือ -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- โหลด Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-
+    <!-- ไลบรารี PeerJS (WebRTC) สำหรับส่งข้อมูลกระทงจากมือถือขึ้นจอหลักอัตโนมัติโดยไม่ต้องตั้งค่าเซิร์ฟเวอร์ -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
+        /* ==========================================
+           1. ระบบ CSS แบบ Standalone
+           ========================================== */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: 'Prompt', sans-serif;
-            overflow-x: hidden;
-            background-color: #060b19;
+            font-family: 'Prompt', 'Sarabun', 'Thonburi', 'Leelawadee UI', 'Tahoma', system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+            background-color: #050a18;
             color: #ffffff;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
+            width: 100vw;
+            height: 100vh;
         }
 
         /* แอนิเมชันแสงจันทร์เรืองรอง */
         @keyframes moonGlow {
-            0%, 100% { box-shadow: 0 0 60px 20px rgba(254, 240, 138, 0.4), 0 0 120px 40px rgba(253, 224, 71, 0.2); }
-            50% { box-shadow: 0 0 80px 30px rgba(254, 240, 138, 0.55), 0 0 150px 55px rgba(253, 224, 71, 0.3); }
+            0%, 100% { box-shadow: 0 0 60px 20px rgba(254, 240, 138, 0.4), 0 0 120px 45px rgba(253, 224, 71, 0.22); }
+            50% { box-shadow: 0 0 85px 32px rgba(254, 240, 138, 0.58), 0 0 155px 60px rgba(253, 224, 71, 0.32); }
         }
         .moon-glow {
             animation: moonGlow 6s infinite ease-in-out;
@@ -48,11 +52,11 @@
 
         /* แอนิเมชันกระทงลอยโคลงเคลงเบาๆ */
         @keyframes bobbing {
-            0%, 100% { transform: translateY(0px) rotate(-1.5deg); }
-            50% { transform: translateY(-6px) rotate(1.5deg); }
+            0%, 100% { transform: translateY(0px) rotate(-1.6deg); }
+            50% { transform: translateY(-6px) rotate(1.6deg); }
         }
         .krathong-bob {
-            animation: bobbing 3.5s infinite ease-in-out;
+            animation: bobbing 3.6s infinite ease-in-out;
         }
 
         /* แอนิเมชันป้ายชื่อลอยตาม */
@@ -61,526 +65,1161 @@
             50% { transform: translateY(-4px); }
         }
         .wish-tag {
-            animation: floatTag 3.5s infinite ease-in-out;
-            animation-delay: 0.3s;
+            animation: floatTag 3.6s infinite ease-in-out;
+            animation-delay: 0.25s;
+        }
+
+        /* แอนิเมชันเปิด Modal */
+        @keyframes modalPopIn {
+            0% { opacity: 0; transform: scale(0.93) translateY(12px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .modal-animate {
+            animation: modalPopIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
 
         /* เอฟเฟกต์กระจกฝ้า (Glassmorphism) */
         .glass-panel {
-            background: rgba(15, 23, 42, 0.72);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(253, 224, 71, 0.25);
+            background: rgba(12, 20, 38, 0.82);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(253, 224, 71, 0.28);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
         }
 
-        .glass-card {
-            background: rgba(30, 41, 59, 0.65);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        /* โครงสร้างหลักของฉากแม่น้ำ */
+        #river-view {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
         }
 
-        .glass-card:hover {
-            border-color: rgba(250, 204, 21, 0.5);
+        #scene-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* พระจันทร์เต็มดวง */
+        #full-moon {
+            position: absolute;
+            top: 3.5rem;
+            right: 4rem;
+            width: 7.5rem;
+            height: 7.5rem;
+            border-radius: 9999px;
+            background: linear-gradient(135deg, #fef9c3 0%, #fde68a 50%, #facc15 100%);
+            z-index: 0;
+            pointer-events: none;
+        }
+        #full-moon-craters {
+            width: 100%;
+            height: 100%;
+            border-radius: 9999px;
+            opacity: 0.22;
+            background: radial-gradient(circle at 30% 30%, #b45309 0%, transparent 25%),
+                        radial-gradient(circle at 70% 60%, #b45309 0%, transparent 30%),
+                        radial-gradient(circle at 45% 75%, #b45309 0%, transparent 20%);
+        }
+
+        /* เส้นขอบฟ้าวัดอรุณฯ และสะพานพระราม 8 */
+        #skyline-silhouette {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 43%;
+            height: 11rem;
+            z-index: 0;
+            pointer-events: none;
+            opacity: 0.88;
+        }
+
+        /* เลเยอร์กระทงในแม่น้ำ */
+        #krathong-river-layer {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 46%;
+            z-index: 10;
+            overflow: hidden;
+        }
+
+        /* ส่วนหัว (Header) */
+        header {
+            position: relative;
+            z-index: 20;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.85rem;
+            padding: 1.15rem 1.75rem;
+        }
+
+        .brand-box {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+        }
+
+        .brand-icon {
+            width: 3.1rem;
+            height: 3.1rem;
+            border-radius: 1rem;
+            background: linear-gradient(135deg, #fbbf24 0%, #ea580c 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.65rem;
+            box-shadow: 0 8px 20px rgba(245, 158, 11, 0.35);
+            border: 1px solid rgba(254, 240, 138, 0.45);
+        }
+
+        .brand-title {
+            font-size: 1.45rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #fef08a 0%, #fde047 50%, #fbbf24 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: 0.01em;
+        }
+
+        .brand-subtitle-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.15rem;
+            font-size: 0.82rem;
+            color: rgba(254, 243, 199, 0.85);
+        }
+
+        .live-pill-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.15rem 0.6rem;
+            border-radius: 9999px;
+            background: rgba(16, 185, 129, 0.18);
+            border: 1px solid rgba(52, 211, 153, 0.45);
+            color: #6ee7b7;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            flex-wrap: wrap;
+        }
+
+        .counter-pill {
+            padding: 0.45rem 0.9rem;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+        }
+
+        .counter-label {
+            font-size: 0.7rem;
+            color: #cbd5e1;
+        }
+
+        .counter-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #fcd34d;
+        }
+
+        /* ปุ่มมาตรฐาน */
+        .btn {
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.45rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            outline: none;
+        }
+        .btn:active {
+            transform: scale(0.96);
+        }
+
+        .btn-icon-glass {
+            padding: 0.6rem 0.85rem;
+            border-radius: 0.95rem;
+            color: #fde68a;
+            font-size: 0.84rem;
+            font-weight: 500;
+        }
+        .btn-icon-glass:hover {
+            background: rgba(245, 158, 11, 0.22);
+            border-color: rgba(250, 204, 21, 0.55);
+        }
+
+        .btn-danger-glass {
+            padding: 0.6rem 0.9rem;
+            border-radius: 0.95rem;
+            background: rgba(127, 29, 29, 0.45);
+            border: 1px solid rgba(248, 113, 113, 0.35);
+            color: #fecaca;
+            font-size: 0.84rem;
+            font-weight: 500;
+        }
+        .btn-danger-glass:hover {
+            background: rgba(185, 28, 28, 0.65);
+            border-color: rgba(252, 165, 165, 0.65);
+            color: #ffffff;
+        }
+
+        /* แถบควบคุมหลักด้านล่าง */
+        footer {
+            position: relative;
+            z-index: 20;
+            padding: 1rem 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.55rem;
+            pointer-events: none;
+        }
+
+        .footer-dock {
+            pointer-events: auto;
+            padding: 0.55rem;
+            border-radius: 1.65rem;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.65rem;
+        }
+
+        .btn-primary-launch {
+            padding: 0.9rem 1.9rem;
+            border-radius: 1.25rem;
+            background: linear-gradient(135deg, #facc15 0%, #f59e0b 55%, #ea580c 100%);
+            color: #0f172a;
+            font-size: 1.08rem;
+            font-weight: 700;
+            box-shadow: 0 10px 28px rgba(245, 158, 11, 0.45);
+            border: 1px solid rgba(254, 249, 195, 0.65);
+        }
+        .btn-primary-launch:hover {
+            filter: brightness(1.08);
             transform: translateY(-2px);
         }
 
-        .glass-card.selected {
+        .btn-secondary-dock {
+            padding: 0.9rem 1.25rem;
+            border-radius: 1.25rem;
+            background: rgba(30, 41, 59, 0.85);
+            color: #fecaca;
+            font-size: 0.94rem;
+            font-weight: 600;
+            border: 1px solid rgba(248, 113, 113, 0.35);
+        }
+        .btn-secondary-dock:hover {
+            background: rgba(153, 27, 27, 0.55);
+            color: #ffffff;
+            border-color: rgba(248, 113, 113, 0.65);
+        }
+
+        .footer-hint {
+            font-size: 0.78rem;
+            color: rgba(226, 232, 240, 0.82);
+            text-align: center;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.85);
+        }
+
+        /* การ์ดแจ้งเตือน Toast */
+        #live-toast-container {
+            position: fixed;
+            top: 5.5rem;
+            right: 1.5rem;
+            z-index: 35;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            pointer-events: none;
+            max-width: 22rem;
+        }
+        .toast-item {
+            padding: 0.7rem 1rem;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transition: all 0.45s ease;
+        }
+
+        /* กระทงแต่ละใบในแม่น้ำ */
+        .river-krathong {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            transition: filter 0.2s ease;
+        }
+        .river-krathong:hover {
+            filter: brightness(1.12);
+        }
+        .river-tag {
+            margin-bottom: 0.2rem;
+            padding: 0.3rem 0.75rem;
+            border-radius: 1rem;
+            background: rgba(9, 14, 28, 0.82);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            text-align: center;
+            max-width: 195px;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55);
+        }
+        .river-tag.highlight {
+            border-color: #facc15;
+            background: rgba(15, 23, 42, 0.92);
+            box-shadow: 0 0 18px rgba(250, 204, 21, 0.45);
+        }
+        .river-tag-name {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #fcd34d;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .river-tag-wish {
+            font-size: 0.68rem;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .river-krathong-art {
+            width: 6.8rem;
+            height: 6.8rem;
+        }
+
+        /* ==========================================
+           2. แผง QR Code มุมซ้ายล่าง (Host QR Dock)
+           ========================================== */
+        .qr-bottom-left-dock {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 1.5rem;
+            z-index: 28;
+            width: 16.5rem;
+            padding: 0.95rem;
+            border-radius: 1.35rem;
+            text-align: center;
+            transition: all 0.25s ease;
+        }
+        .qr-bottom-left-dock.hidden-dock {
+            display: none;
+        }
+        .qr-box-white {
+            background: #ffffff;
+            padding: 0.65rem;
+            border-radius: 0.95rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0.45rem auto;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+        }
+        .room-code-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            background: rgba(250, 204, 21, 0.16);
+            border: 1px solid rgba(250, 204, 21, 0.45);
+            color: #fde047;
+            font-weight: 700;
+            font-size: 0.88rem;
+            letter-spacing: 0.08em;
+        }
+        .sync-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.22rem 0.65rem;
+            border-radius: 9999px;
+            font-size: 0.71rem;
+            font-weight: 600;
+            margin-bottom: 0.35rem;
+        }
+        .sync-connected {
+            background: rgba(16, 185, 129, 0.22);
+            border: 1px solid rgba(52, 211, 153, 0.55);
+            color: #6ee7b7;
+        }
+        .sync-demo {
+            background: rgba(56, 189, 248, 0.2);
+            border: 1px solid rgba(125, 211, 252, 0.5);
+            color: #bae6fd;
+        }
+        .sync-warn {
+            background: rgba(245, 158, 11, 0.22);
+            border: 1px solid rgba(251, 191, 36, 0.55);
+            color: #fde68a;
+        }
+
+        /* ==========================================
+           3. หน้าต่าง Pop-up (Modals)
+           ========================================== */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: rgba(3, 7, 18, 0.84);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            overflow-y: auto;
+        }
+        .modal-backdrop.active {
+            display: flex;
+        }
+
+        .creator-card {
+            width: 100%;
+            max-width: 34rem;
+            border-radius: 1.75rem;
+            padding: 1.5rem;
+            position: relative;
+            border: 1px solid rgba(250, 204, 21, 0.38);
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(9, 14, 28, 0.99) 100%);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+            max-height: 94vh;
+            overflow-y: auto;
+        }
+
+        .modal-close-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            width: 2.25rem;
+            height: 2.25rem;
+            border-radius: 9999px;
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #cbd5e1;
+            font-size: 1.1rem;
+        }
+        .modal-close-btn:hover {
+            background: rgba(51, 65, 85, 1);
+            color: #ffffff;
+        }
+
+        /* กล่องตัวอย่าง Live Preview */
+        .preview-stage {
+            position: relative;
+            border-radius: 1.35rem;
+            background: radial-gradient(circle at 50% 25%, rgba(30, 58, 138, 0.45) 0%, rgba(6, 11, 25, 0.95) 85%);
+            border: 1px solid rgba(250, 204, 21, 0.25);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0.75rem 0 1.1rem;
+            overflow: hidden;
+        }
+
+        .preview-art {
+            width: 8.5rem;
+            height: 8.5rem;
+        }
+
+        .preview-badge-box {
+            margin-top: 0.25rem;
+            padding: 0.4rem 1rem;
+            border-radius: 9999px;
+            background: rgba(2, 6, 23, 0.82);
+            border: 1px solid rgba(250, 204, 21, 0.32);
+            text-align: center;
+            max-width: 92%;
+        }
+
+        /* ตัวเลือกแบบกระทง 5 แบบ */
+        .section-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: #fde68a;
+            margin-bottom: 0.6rem;
+        }
+        .step-num {
+            width: 1.35rem;
+            height: 1.35rem;
+            border-radius: 9999px;
+            background: #facc15;
+            color: #0f172a;
+            font-size: 0.78rem;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .krathong-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0.5rem;
+            margin-bottom: 1.1rem;
+        }
+
+        .k-option {
+            cursor: pointer;
+            border-radius: 1rem;
+            padding: 0.5rem 0.3rem;
+            background: rgba(30, 41, 59, 0.65);
+            border: 1.5px solid rgba(255, 255, 255, 0.12);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            transition: all 0.2s ease;
+            color: #e2e8f0;
+            font-family: inherit;
+        }
+        .k-option:hover {
+            border-color: rgba(250, 204, 21, 0.55);
+            transform: translateY(-2px);
+        }
+        .k-option.selected {
             background: rgba(250, 204, 21, 0.18);
             border-color: #facc15;
-            box-shadow: 0 0 20px rgba(250, 204, 21, 0.25);
+            box-shadow: 0 0 18px rgba(250, 204, 21, 0.28);
+        }
+        .k-option-badge {
+            font-size: 0.62rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 9999px;
+            background: rgba(245, 158, 11, 0.22);
+            color: #fcd34d;
+            margin-bottom: 0.2rem;
+        }
+        .k-option-svg {
+            width: 3.4rem;
+            height: 3.4rem;
+        }
+        .k-option-name {
+            font-size: 0.72rem;
+            font-weight: 600;
+            margin-top: 0.2rem;
+            line-height: 1.2;
         }
 
-        /* Custom Scrollbar สำหรับหน้าจอมือถือ */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+        /* ช่องกรอกข้อมูล */
+        .form-group {
+            margin-bottom: 0.85rem;
         }
-        ::-webkit-scrollbar-track {
-            background: rgba(15, 23, 42, 0.4);
+        .text-input, .textarea-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border-radius: 0.95rem;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1.5px solid rgba(148, 163, 184, 0.28);
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: border-color 0.2s ease;
         }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(250, 204, 21, 0.4);
-            border-radius: 999px;
+        .text-input:focus, .textarea-input:focus {
+            outline: none;
+            border-color: #facc15;
         }
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(250, 204, 21, 0.7);
+        .textarea-input {
+            resize: none;
         }
 
-        /* แอนิเมชันสไลด์ขึ้นเมื่อปล่อยกระทง */
-        @keyframes launchUp {
-            0% { transform: translateY(0) scale(1); opacity: 1; }
-            60% { transform: translateY(-120px) scale(0.85); opacity: 1; }
-            100% { transform: translateY(-220px) scale(0.5); opacity: 0; }
+        /* ชิปคำอธิษฐานยอดนิยม */
+        .preset-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin-top: 0.5rem;
         }
-        .launching-krathong {
-            animation: launchUp 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        .chip-btn {
+            cursor: pointer;
+            padding: 0.35rem 0.7rem;
+            border-radius: 9999px;
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #fde68a;
+            font-family: inherit;
+            font-size: 0.75rem;
+            transition: all 0.18s ease;
+        }
+        .chip-btn:hover {
+            background: rgba(245, 158, 11, 0.25);
+            border-color: rgba(250, 204, 21, 0.55);
+        }
+
+        .btn-submit-krathong {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            border-radius: 1.15rem;
+            background: linear-gradient(135deg, #facc15 0%, #f59e0b 55%, #ea580c 100%);
+            color: #0f172a;
+            font-size: 1.1rem;
+            font-weight: 700;
+            box-shadow: 0 10px 25px rgba(245, 158, 11, 0.4);
+            margin-top: 0.5rem;
+        }
+        .btn-submit-krathong:hover {
+            filter: brightness(1.07);
+        }
+
+        /* หน้าต่างยืนยันการล้างกระทง & ดูรายละเอียดกระทง */
+        .small-modal-card {
+            width: 100%;
+            max-width: 24rem;
+            border-radius: 1.65rem;
+            padding: 1.65rem;
+            text-align: center;
+            position: relative;
+            border: 1px solid rgba(250, 204, 21, 0.35);
+            background: rgba(12, 20, 38, 0.96);
+            box-shadow: 0 24px 55px rgba(0, 0, 0, 0.75);
+        }
+
+        .confirm-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.65rem;
+            margin-top: 1.25rem;
+        }
+
+        /* ==========================================
+           4. หน้าจอมือถือ (?mode=mobile&room=LK-XXXX)
+           ========================================== */
+        #mobile-view {
+            display: none;
+            min-height: 100vh;
+            width: 100%;
+            background: radial-gradient(circle at 50% 0%, #172554 0%, #09152e 45%, #040814 100%);
+            padding: 1rem 1rem 2.5rem;
+            overflow-y: auto;
+        }
+        .mobile-container {
+            max-width: 30rem;
+            margin: 0 auto;
+        }
+        .mobile-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            padding: 0.85rem 1rem;
+            border-radius: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .mobile-success-banner {
+            display: none;
+            padding: 1.15rem;
+            border-radius: 1.35rem;
+            background: rgba(6, 78, 59, 0.78);
+            border: 1.5px solid rgba(52, 211, 153, 0.65);
+            text-align: center;
+            margin-bottom: 1rem;
+            box-shadow: 0 12px 28px rgba(16, 185, 129, 0.25);
+        }
+
+        /* Responsive สำหรับหน้าจอเล็ก */
+        @media (max-width: 768px) {
+            header {
+                padding: 0.85rem 1rem;
+            }
+            .brand-title {
+                font-size: 1.18rem;
+            }
+            #full-moon {
+                top: 4.5rem;
+                right: 1.5rem;
+                width: 5.2rem;
+                height: 5.2rem;
+            }
+            .krathong-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .btn-primary-launch {
+                padding: 0.85rem 1.4rem;
+                font-size: 0.98rem;
+            }
+            .btn-secondary-dock {
+                padding: 0.85rem 1.05rem;
+                font-size: 0.88rem;
+            }
+            .qr-bottom-left-dock {
+                position: fixed;
+                bottom: 5.2rem;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 92%;
+                max-width: 21rem;
+            }
         }
     </style>
 </head>
-<body class="min-h-screen w-full relative overflow-hidden">
+<body>
 
-    <!-- ========================================== -->
-    <!-- 1. หน้าจอหลัก (ฉากแม่น้ำเจ้าพระยายอดนิยม) -->
-    <!-- ========================================== -->
-    <div id="river-view" class="relative w-full h-screen overflow-hidden flex flex-col justify-between">
-        
-        <!-- Canvas สำหรับท้องฟ้า ดวงดาว โคมลอย พลุ และคลื่นน้ำ -->
-        <canvas id="scene-canvas" class="absolute inset-0 w-full h-full z-0 pointer-events-none"></canvas>
-
-        <!-- พระจันทร์เต็มดวง (CSS + Glow) -->
-        <div id="full-moon" class="absolute top-12 right-10 sm:top-16 sm:right-24 md:right-36 w-20 h-20 sm:w-28 sm:h-28 md:w-36 md:h-36 rounded-full bg-gradient-to-br from-yellow-100 via-amber-200 to-yellow-400 moon-glow z-0 pointer-events-none flex items-center justify-center">
-            <!-- ลวดลายพื้นผิวดวงจันทร์จางๆ -->
-            <div class="w-full h-full rounded-full opacity-20 bg-[radial-gradient(circle_at_30%_30%,#b45309_0%,transparent_25%),radial-gradient(circle_at_70%_60%,#b45309_0%,transparent_30%),radial-gradient(circle_at_45%_75%,#b45309_0%,transparent_20%)]"></div>
-        </div>
-
-        <!-- ฉากวัดอรุณฯ / เส้นขอบฟ้าฝั่งตรงข้าม (SVG Silhouette) -->
-        <div class="absolute inset-x-0 bottom-[42%] h-32 sm:h-44 z-0 pointer-events-none opacity-85 flex items-end justify-between px-4 sm:px-16">
-            <svg viewBox="0 0 1200 180" class="w-full h-full preserve-3d" preserveAspectRatio="none">
-                <defs>
-                    <linearGradient id="templeGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#1e293b" />
-                        <stop offset="100%" stop-color="#090d16" />
-                    </linearGradient>
-                    <radialGradient id="templeGlow" cx="50%" cy="50%" r="50%">
-                        <stop offset="0%" stop-color="rgba(253, 224, 71, 0.25)" />
-                        <stop offset="100%" stop-color="rgba(253, 224, 71, 0)" />
-                    </radialGradient>
-                </defs>
-                <!-- แสงไฟส่องพระปรางค์ -->
-                <ellipse cx="260" cy="110" rx="140" ry="70" fill="url(#templeGlow)" />
-                
-                <!-- พุ่มไม้ริมน้ำ -->
-                <path d="M0,180 L0,145 Q40,130 80,148 Q130,125 180,150 L180,180 Z" fill="#090d16" />
-                
-                <!-- พระปรางค์วัดอรุณ (จำลองเงา) -->
-                <g fill="url(#templeGrad)">
-                    <!-- ปรางค์ทิศซ้าย -->
-                    <path d="M195,180 L202,125 L208,105 L214,125 L221,180 Z" />
-                    <!-- พระปรางค์ประธาน -->
-                    <path d="M232,180 L240,110 L248,65 L256,30 L260,12 L264,30 L272,65 L280,110 L288,180 Z" />
-                    <!-- ชั้นลดหลั่น -->
-                    <rect x="236" y="135" width="48" height="6" rx="2" />
-                    <rect x="242" y="105" width="36" height="5" rx="2" />
-                    <rect x="248" y="75" width="24" height="4" rx="2" />
-                    <!-- ปรางค์ทิศขวา -->
-                    <path d="M299,180 L306,125 L312,105 L318,125 L325,180 Z" />
-                </g>
-
-                <!-- แนวอาคารและต้นไม้ริมแม่น้ำ -->
-                <path d="M330,180 L330,152 Q380,138 430,155 Q490,135 550,152 L600,145 L620,145 L620,180 Z" fill="#090d16" />
-                <!-- สะพานพระราม 8 / สะพานข้ามแม่น้ำไกลๆ -->
-                <path d="M620,158 Q780,135 950,158" stroke="#1e293b" stroke-width="4" fill="none" />
-                <line x1="780" y1="85" x2="780" y2="165" stroke="#334155" stroke-width="5" />
-                <line x1="780" y1="90" x2="670" y2="154" stroke="#facc15" stroke-width="0.8" opacity="0.4" />
-                <line x1="780" y1="90" x2="710" y2="150" stroke="#facc15" stroke-width="0.8" opacity="0.4" />
-                <line x1="780" y1="90" x2="745" y2="147" stroke="#facc15" stroke-width="0.8" opacity="0.4" />
-                <line x1="780" y1="90" x2="815" y2="147" stroke="#facc15" stroke-width="0.8" opacity="0.4" />
-                <line x1="780" y1="90" x2="850" y2="150" stroke="#facc15" stroke-width="0.8" opacity="0.4" />
-                <line x1="780" y1="90" x2="890" y2="154" stroke="#facc15" stroke-width="0.8" opacity="0.4" />
-                
-                <!-- พุ่มไม้ฝั่งขวา -->
-                <path d="M940,180 L940,150 Q1020,130 1100,152 Q1150,135 1200,148 L1200,180 Z" fill="#090d16" />
-            </svg>
-        </div>
-
-        <!-- เลเยอร์สำหรับวางกระทงที่ลอยในแม่น้ำ (ครอบคลุมพื้นที่ครึ่งล่างของหน้าจอ) -->
-        <div id="krathong-river-layer" class="absolute inset-x-0 bottom-0 h-[46%] z-10 overflow-hidden pointer-events-auto">
-            <!-- กระทงต่างๆ จะถูกสร้างและอัปเดตตำแหน่งที่นี่ด้วย JS -->
-        </div>
-
-        <!-- แถบส่วนหัว (Header) -->
-        <header class="relative z-20 flex flex-wrap items-center justify-between gap-3 p-4 sm:px-8 sm:py-5">
-            <div class="flex items-center gap-3">
-                <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/30 border border-amber-200/40">
-                    <span class="text-2xl">🪷</span>
-                </div>
+    <!-- ==========================================
+         0. โหมดมือถือ (?mode=mobile&room=LK-XXXX)
+         ========================================== -->
+    <div id="mobile-view">
+        <div class="mobile-container">
+            <div class="glass-panel mobile-header">
                 <div>
-                    <h1 class="text-lg sm:text-2xl font-bold bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 bg-clip-text text-transparent drop-shadow">
-                        ลอยกระทงออนไลน์
-                    </h1>
-                    <div class="flex flex-wrap items-center gap-2 mt-0.5">
-                        <p class="text-xs sm:text-sm text-amber-100/80">สืบสานประเพณีไทย รักษ์สายน้ำเจ้าพระยา</p>
-                        <!-- ป้ายแสดงรหัสห้องและสถานะการเชื่อมต่อ Real-time -->
-                        <span id="room-status-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-900/80 border border-amber-400/30 text-[11px] font-medium text-amber-300">
-                            <span id="sync-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                            <span>ห้อง #<span id="header-room-code">----</span></span>
-                            <span id="sync-status-text" class="text-slate-300 hidden sm:inline">• กำลังเชื่อมต่อ...</span>
-                        </span>
+                    <div style="font-size: 1.12rem; font-weight: 700; color: #fcd34d;">🪷 ลอยกระทงผ่านมือถือ</div>
+                    <div style="font-size: 0.76rem; color: #cbd5e1; margin-top: 0.15rem;">
+                        ห้อง: <strong id="mobile-room-code" style="color:#fde047; letter-spacing:0.06em;">LK-XXXX</strong>
+                        • <span id="mobile-sync-status" style="color:#fde68a;">กำลังเชื่อมต่อ...</span>
                     </div>
                 </div>
-            </div>
-
-            <!-- สถิติและปุ่มควบคุมมุมขวาบน -->
-            <div class="flex items-center gap-2 sm:gap-3">
-                <!-- ตัวนับจำนวนกระทง -->
-                <div class="glass-panel px-3.5 py-2 rounded-2xl flex items-center gap-2 shadow-lg">
-                    <span class="text-amber-400 text-base sm:text-lg">🕯️</span>
-                    <div class="leading-tight">
-                        <div class="text-[10px] sm:text-xs text-slate-300">ลอยแล้วทั้งหมด</div>
-                        <div class="text-sm sm:text-base font-bold text-amber-300"><span id="total-krathong-count">1,284</span> ใบ</div>
-                    </div>
-                </div>
-
-                <!-- ปุ่มจุดพลุ -->
-                <button onclick="launchRandomFirework(true)" title="จุดพลุฉลอง" class="glass-panel hover:bg-amber-500/20 active:scale-95 transition-all p-2.5 sm:px-4 sm:py-2.5 rounded-2xl flex items-center gap-1.5 text-amber-300 border border-amber-400/30 shadow-lg">
-                    <i data-lucide="sparkles" class="w-5 h-5"></i>
-                    <span class="hidden md:inline text-sm font-medium">จุดพลุ</span>
-                </button>
-
-                <!-- ปุ่มเปิด/ปิดเสียง -->
-                <button id="audio-toggle-btn" onclick="toggleAudio()" title="เปิด/ปิดเสียงบรรยากาศ" class="glass-panel hover:bg-amber-500/20 active:scale-95 transition-all p-2.5 rounded-2xl text-slate-300 border border-white/15 shadow-lg">
-                    <i id="audio-icon" data-lucide="volume-x" class="w-5 h-5"></i>
+                <button type="button" onclick="switchToStageView()" class="btn btn-icon-glass" style="padding: 0.5rem 0.75rem; font-size: 0.78rem;">
+                    <span>🖥️</span>
+                    <span>จอหลัก</span>
                 </button>
             </div>
-        </header>
 
-        <!-- การ์ดแจ้งเตือนเมื่อมีกระทงใหม่ลอยลงน้ำ (Toast Notification) -->
-        <div id="live-toast-container" class="fixed top-20 left-4 sm:left-8 z-30 flex flex-col gap-2 pointer-events-none max-w-xs sm:max-w-sm"></div>
-
-        <!-- แถบควบคุมด้านล่าง (ปุ่มสแกน QR Code และปุ่มลอยกระทง) -->
-        <footer class="relative z-20 p-4 sm:pb-8 flex flex-col items-center justify-center gap-3 pointer-events-none">
-            <div class="glass-panel p-2 rounded-3xl shadow-2xl border border-amber-400/30 flex flex-wrap items-center justify-center gap-2 sm:gap-3 pointer-events-auto">
-                <!-- ปุ่มสแกน QR Code (สำหรับจอใหญ่/โปรเจกเตอร์) -->
-                <button onclick="openQrModal()" class="px-4 py-3 sm:px-5 sm:py-3.5 rounded-2xl bg-slate-800/90 hover:bg-slate-700 text-amber-200 border border-amber-400/30 flex items-center gap-2.5 transition-all active:scale-95 shadow-md">
-                    <i data-lucide="qr-code" class="w-5 h-5 text-amber-400"></i>
-                    <span class="text-sm sm:text-base font-medium">สแกน QR ลอยผ่านมือถือ</span>
-                </button>
-
-                <!-- ปุ่มหลัก: สร้างและลอยกระทงเลย -->
-                <button onclick="openMobileCreator(false)" class="px-6 py-3 sm:px-8 sm:py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold flex items-center gap-2.5 transition-all active:scale-95 shadow-lg shadow-amber-500/30">
-                    <span class="text-xl">🪷</span>
-                    <span class="text-sm sm:text-base">ลอยกระทงเลย</span>
-                </button>
-            </div>
-            <p class="text-[11px] sm:text-xs text-slate-300/75 text-center drop-shadow">
-                คลิกที่กระทงในแม่น้ำเพื่ออ่านคำอธิษฐาน • สแกน QR Code เพื่อควบคุมจากสมาร์ทโฟน
-            </p>
-        </footer>
-    </div>
-
-    <!-- ========================================== -->
-    <!-- 2. หน้าต่างแสดง QR Code (สำหรับสแกนด้วยมือถือ) -->
-    <!-- ========================================== -->
-    <div id="qr-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md transition-opacity overflow-y-auto">
-        <div class="glass-panel w-full max-w-md rounded-3xl p-5 sm:p-7 relative border border-amber-400/40 shadow-2xl text-center my-auto">
-            <button onclick="closeQrModal()" class="absolute top-4 right-4 p-2 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors">
-                <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-
-            <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 mb-2 border border-amber-400/30">
-                <i data-lucide="smartphone" class="w-6 h-6"></i>
-            </div>
-            <h2 class="text-lg sm:text-xl font-bold text-amber-300">สแกน QR Code เพื่อลอยกระทง</h2>
-            <p class="text-xs text-slate-300 mt-1">
-                รหัสห้องเชื่อมต่อสด: <span class="font-bold text-amber-300 text-sm">#<span id="modal-room-code">----</span></span> (ซิงก์กระทงขึ้นจอนี้ทันที)
-            </p>
-
-            <!-- แจ้งเตือนกรณีรันบน localhost / file:// / sandbox ที่มือถือสแกนเข้าตรงๆ ไม่ได้ -->
-            <div id="local-url-warning" class="hidden mt-3 p-3 rounded-2xl bg-amber-500/15 border border-amber-400/40 text-left">
-                <div class="flex items-start gap-2">
-                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
-                    <div class="text-[11px] text-amber-100 leading-relaxed">
-                        <strong class="text-amber-300">ตรวจพบลิงก์ภายในเครื่อง/Sandbox:</strong> โทรศัพท์มือถืออาจเปิดลิงก์นี้ไม่ได้โดยตรง หากคุณอัปโหลดเว็บขึ้นโฮสติ้งแล้ว ให้วาง <strong>URL สาธารณะ (https://...)</strong> หรือ <strong>IP เครื่องใน Wi-Fi</strong> ด้านล่างเพื่ออัปเดต QR Code ทันที
-                    </div>
-                </div>
-                <div class="mt-2 flex gap-1.5">
-                    <input type="url" id="custom-base-url-input" placeholder="เช่น https://my-krathong.web.app" 
-                        oninput="handleCustomUrlChange(this.value)"
-                        class="flex-1 px-3 py-1.5 rounded-xl bg-slate-950/90 border border-amber-400/30 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-amber-400">
-                    <button type="button" onclick="resetCustomUrl()" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300">
-                        รีเซ็ต
+            <!-- กล่องยืนยันเมื่อส่งกระทงขึ้นจอสำเร็จ -->
+            <div id="mobile-success-banner" class="mobile-success-banner modal-animate">
+                <div style="font-size: 2.5rem; margin-bottom: 0.35rem;">🎉🪷✨</div>
+                <div style="font-size: 1.18rem; font-weight: 700; color: #a7f3d0;">ส่งกระทงขึ้นจอเรียบร้อยแล้ว!</div>
+                <p id="mobile-sent-summary" style="font-size: 0.85rem; color: #ecfdf5; margin-top: 0.3rem; line-height: 1.45;"></p>
+                <div style="display: flex; gap: 0.55rem; justify-content: center; margin-top: 0.9rem; flex-wrap: wrap;">
+                    <button type="button" onclick="hideMobileSuccessBanner()" class="btn" style="padding: 0.65rem 1.25rem; border-radius: 0.95rem; background: #10b981; color: #052e16; font-weight: 700; font-size: 0.92rem;">
+                        🪷 ลอยกระทงใบใหม่
                     </button>
                 </div>
             </div>
 
-            <!-- กล่อง QR Code (พื้นหลังสีขาวขอบกว้าง อ่านง่ายจากหน้าจอคอม/โปรเจกเตอร์) -->
-            <div class="my-4 flex justify-center">
-                <div class="p-4 sm:p-5 bg-white rounded-3xl shadow-2xl inline-block relative border-4 border-amber-300/60">
-                    <div id="qrcode-container" class="w-48 h-48 sm:w-52 sm:h-52 flex items-center justify-center bg-white"></div>
+            <div class="creator-card" style="max-width: 100%; max-height: none;">
+                <!-- ตัวอย่างกระทงแบบ Live Preview -->
+                <div class="preview-stage">
+                    <div style="font-size: 0.72rem; color: #fde68a; margin-bottom: 0.2rem;">ตัวอย่างกระทงบนหน้าจอมือถือ</div>
+                    <div id="mobile-preview-krathong-svg" class="preview-art krathong-bob"></div>
+                    <div class="preview-badge-box">
+                        <div id="mobile-preview-name-text" style="font-size: 0.86rem; font-weight: 700; color: #fcd34d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ผู้ร่วมสืบสานประเพณี</div>
+                        <div id="mobile-preview-wish-text" style="font-size: 0.74rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ขอขมาพระแม่คงคา ขอให้ชีวิตราบรื่นมีความสุข</div>
+                    </div>
                 </div>
-            </div>
 
-            <!-- แสดง URL ปัจจุบันที่ใช้สร้าง QR -->
-            <div class="mb-3 px-3 py-1.5 rounded-xl bg-slate-950/70 border border-white/10 text-[11px] text-slate-300 truncate font-mono" id="qr-target-url-display">
-                https://...
-            </div>
+                <!-- ขั้นตอนที่ 1: เลือกแบบกระทง -->
+                <div class="section-label">
+                    <span class="step-num">1</span>
+                    <span>เลือกรูปแบบกระทง (5 สไตล์)</span>
+                </div>
+                <div id="mobile-krathong-selector-grid" class="krathong-grid"></div>
 
-            <!-- ปุ่มคัดลอกลิงก์ & ปุ่มจำลองหน้าจอมือถือทันที -->
-            <div class="space-y-2">
-                <button onclick="openMobileCreator(true)" class="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
-                    <i data-lucide="smartphone-nfc" class="w-5 h-5"></i>
-                    <span>เปิดโหมดมือถือบนหน้านี้ทันที</span>
-                </button>
-                
-                <button onclick="copyMobileLink()" class="w-full py-2.5 px-4 rounded-2xl bg-slate-800/90 hover:bg-slate-700 text-amber-200 border border-white/15 text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-95">
-                    <i data-lucide="copy" class="w-4 h-4"></i>
-                    <span id="copy-link-text">คัดลอกลิงก์สำหรับมือถือ (Copy Link)</span>
+                <!-- ขั้นตอนที่ 2: กรอกชื่อและคำอธิษฐาน -->
+                <div class="section-label">
+                    <span class="step-num">2</span>
+                    <span>ใส่ชื่อและคำอธิษฐาน</span>
+                </div>
+
+                <div class="form-group">
+                    <input type="text" id="mobile-input-user-name" maxlength="32" placeholder="ชื่อของคุณ หรือ ครอบครัว (เช่น น้องมะลิ)"
+                        oninput="updateLivePreview()" class="text-input">
+                </div>
+
+                <div class="form-group">
+                    <textarea id="mobile-input-user-wish" rows="2" maxlength="100" placeholder="พิมพ์คำอธิษฐาน หรือเลือกคำอวยพรด้านล่าง..."
+                        oninput="updateLivePreview()" class="textarea-input"></textarea>
+                    <div class="preset-chips">
+                        <button type="button" onclick="selectPresetWish('ขอขมาพระแม่คงคา ขอให้ชีวิตราบรื่นมีความสุข')" class="chip-btn">🙏 ขอขมาพระแม่คงคา</button>
+                        <button type="button" onclick="selectPresetWish('ขอให้สุขภาพร่างกายแข็งแรง ปราศจากโรคภัย')" class="chip-btn">💪 สุขภาพแข็งแรง</button>
+                        <button type="button" onclick="selectPresetWish('ขอให้การงานก้าวหน้า การเงินไหลมาเทมา')" class="chip-btn">💰 การงานรุ่งเรือง</button>
+                        <button type="button" onclick="selectPresetWish('ขอให้การเรียนสำเร็จ สมหวังดังตั้งใจ')" class="chip-btn">🎓 การเรียนสำเร็จ</button>
+                        <button type="button" onclick="selectPresetWish('ขอให้ครอบครัวอบอุ่น พบเจอแต่กัลยาณมิตร')" class="chip-btn">💖 ครอบครัวมีความสุข</button>
+                    </div>
+                </div>
+
+                <button type="button" id="mobile-submit-btn" onclick="submitKrathong(true)" class="btn btn-submit-krathong">
+                    <span style="font-size: 1.35rem;">🚀</span>
+                    <span>ลอยกระทงขึ้นจอ</span>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- ========================================== -->
-    <!-- 3. หน้าจอควบคุมบนมือถือ / สร้างกระทง (Mobile Controller UI) -->
-    <!-- ========================================== -->
-    <div id="mobile-creator-view" class="fixed inset-0 z-40 hidden flex-col bg-gradient-to-b from-[#091124] via-[#0f1c3a] to-[#060b19] overflow-y-auto">
-        <!-- แถบด้านบนของโหมดมือถือ -->
-        <div class="sticky top-0 z-30 glass-panel px-4 py-3 flex items-center justify-between border-b border-amber-400/20">
-            <div class="flex items-center gap-2.5">
-                <span class="text-2xl">🪷</span>
-                <div>
-                    <div class="flex items-center gap-2">
-                        <h2 class="text-base font-bold text-amber-300 leading-tight">สร้างกระทงของคุณ</h2>
-                        <span class="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/30 text-[10px] font-bold text-amber-300">
-                            ห้อง #<span id="mobile-room-code">----</span>
-                        </span>
-                    </div>
-                    <p id="mobile-sync-subtitle" class="text-[11px] text-emerald-300 flex items-center gap-1">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
-                        <span>พร้อมส่งกระทงขึ้นหน้าจอแม่น้ำ</span>
-                    </p>
-                </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <button onclick="toggleAudio()" class="p-2.5 rounded-xl bg-slate-800/80 text-amber-300 border border-white/10 active:scale-95">
-                    <i id="mobile-audio-icon" data-lucide="volume-x" class="w-4 h-4"></i>
-                </button>
-                <button id="close-mobile-btn" onclick="closeMobileCreator()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-white/15 flex items-center gap-1 active:scale-95">
-                    <i data-lucide="eye" class="w-4 h-4 text-amber-400"></i>
-                    <span>ดูแม่น้ำ</span>
-                </button>
-            </div>
+    <!-- ==========================================
+         1. ฉากแม่น้ำเจ้าพระยาหลัก (Host / River Display)
+         ========================================== -->
+    <div id="river-view">
+        <!-- Canvas ท้องฟ้า ดวงดาว โคมลอย พลุ และคลื่นน้ำ -->
+        <canvas id="scene-canvas"></canvas>
+
+        <!-- พระจันทร์เต็มดวง -->
+        <div id="full-moon" class="moon-glow">
+            <div id="full-moon-craters"></div>
         </div>
 
-        <!-- เนื้อหาหลักสำหรับมือถือ (จัดกึ่งกลางและรองรับการใช้งานมือเดียวสะดวก) -->
-        <div class="flex-1 w-full max-w-lg mx-auto p-4 sm:p-6 flex flex-col justify-between gap-4 pb-8">
-            
-            <!-- กล่องยืนยันเมื่อส่งกระทงขึ้นจอใหญ่สำเร็จ (แสดงบนมือถือ) -->
-            <div id="mobile-sent-banner" class="hidden p-4 rounded-2xl bg-emerald-950/90 border border-emerald-400/50 shadow-lg text-center transition-all">
-                <div class="text-2xl mb-1">🎉🪷✨</div>
-                <div class="text-sm font-bold text-emerald-300" id="mobile-sent-title">ส่งกระทงขึ้นหน้าจอแม่น้ำสำเร็จแล้ว!</div>
-                <p class="text-xs text-emerald-100/90 mt-1">มองขึ้นไปที่หน้าจอใหญ่เพื่อชมกระทงของคุณ หรือสร้างกระทงใบใหม่เพิ่มได้เลย</p>
-                <button type="button" onclick="closeMobileCreator()" class="mt-2.5 px-4 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-xs font-semibold text-emerald-200">
-                    ดูแม่น้ำบนเครื่องนี้ด้วย
-                </button>
+        <!-- เงาวัดอรุณฯ และสะพานพระราม 8 ฝั่งตรงข้าม -->
+        <div id="skyline-silhouette">
+            <svg viewBox="0 0 1200 180" style="width: 100%; height: 100%;" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="templeGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#1e293b" />
+                        <stop offset="100%" stop-color="#070b14" />
+                    </linearGradient>
+                    <radialGradient id="templeGlow" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stop-color="rgba(253, 224, 71, 0.28)" />
+                        <stop offset="100%" stop-color="rgba(253, 224, 71, 0)" />
+                    </radialGradient>
+                </defs>
+                <ellipse cx="260" cy="110" rx="145" ry="72" fill="url(#templeGlow)" />
+                <path d="M0,180 L0,145 Q40,130 80,148 Q130,125 180,150 L180,180 Z" fill="#070b14" />
+                
+                <!-- พระปรางค์วัดอรุณ -->
+                <g fill="url(#templeGrad)">
+                    <path d="M195,180 L202,125 L208,105 L214,125 L221,180 Z" />
+                    <path d="M232,180 L240,110 L248,65 L256,30 L260,12 L264,30 L272,65 L280,110 L288,180 Z" />
+                    <rect x="236" y="135" width="48" height="6" rx="2" />
+                    <rect x="242" y="105" width="36" height="5" rx="2" />
+                    <rect x="248" y="75" width="24" height="4" rx="2" />
+                    <path d="M299,180 L306,125 L312,105 L318,125 L325,180 Z" />
+                </g>
+
+                <path d="M330,180 L330,152 Q380,138 430,155 Q490,135 550,152 L600,145 L620,145 L620,180 Z" fill="#070b14" />
+                
+                <!-- สะพานพระราม 8 -->
+                <path d="M620,158 Q780,135 950,158" stroke="#1e293b" stroke-width="4" fill="none" />
+                <line x1="780" y1="85" x2="780" y2="165" stroke="#334155" stroke-width="5" />
+                <line x1="780" y1="90" x2="670" y2="154" stroke="#facc15" stroke-width="0.9" opacity="0.45" />
+                <line x1="780" y1="90" x2="710" y2="150" stroke="#facc15" stroke-width="0.9" opacity="0.45" />
+                <line x1="780" y1="90" x2="745" y2="147" stroke="#facc15" stroke-width="0.9" opacity="0.45" />
+                <line x1="780" y1="90" x2="815" y2="147" stroke="#facc15" stroke-width="0.9" opacity="0.45" />
+                <line x1="780" y1="90" x2="850" y2="150" stroke="#facc15" stroke-width="0.9" opacity="0.45" />
+                <line x1="780" y1="90" x2="890" y2="154" stroke="#facc15" stroke-width="0.9" opacity="0.45" />
+                
+                <path d="M940,180 L940,150 Q1020,130 1100,152 Q1150,135 1200,148 L1200,180 Z" fill="#070b14" />
+            </svg>
+        </div>
+
+        <!-- พื้นที่ลอยกระทงในแม่น้ำ -->
+        <div id="krathong-river-layer"></div>
+
+        <!-- แถบส่วนหัว (Header) -->
+        <header>
+            <div class="brand-box">
+                <div class="brand-icon">🪷</div>
+                <div>
+                    <h1 class="brand-title">ลอยกระทงออนไลน์</h1>
+                    <div class="brand-subtitle-row">
+                        <span>สืบสานประเพณีไทย รักษ์สายน้ำเจ้าพระยา</span>
+                        <span id="header-live-badge" class="live-pill-badge">● พร้อมรับกระทงจากมือถือ</span>
+                    </div>
+                </div>
             </div>
 
-            <!-- ส่วนแสดงตัวอย่างกระทงแบบ Live Preview -->
-            <div class="relative rounded-3xl bg-gradient-to-b from-slate-900/90 to-blue-950/70 border border-amber-400/25 p-5 flex flex-col items-center justify-center overflow-hidden shadow-inner min-h-[210px]">
-                <!-- ดวงดาวและแสงจันทร์พื้นหลังการ์ด -->
-                <div class="absolute top-3 right-5 w-10 h-10 rounded-full bg-amber-200/20 blur-md"></div>
-                <div class="text-xs text-amber-200/80 mb-1 font-medium tracking-wide">ตัวอย่างกระทงของคุณ</div>
-                
-                <!-- ตัวกระทง Preview -->
-                <div id="preview-krathong-wrapper" class="relative z-10 my-2 krathong-bob transition-transform duration-300">
-                    <div id="preview-krathong-svg" class="w-36 h-36 sm:w-40 sm:h-40 flex items-center justify-center"></div>
+            <div class="header-controls">
+                <!-- ตัวนับจำนวนกระทง -->
+                <div class="glass-panel counter-pill">
+                    <span style="font-size: 1.3rem;">🕯️</span>
+                    <div>
+                        <div class="counter-label">กระทงในแม่น้ำ</div>
+                        <div class="counter-value"><span id="total-krathong-count">0</span> ใบ</div>
+                    </div>
                 </div>
 
-                <!-- ป้ายชื่อตัวอย่าง -->
-                <div class="mt-1 px-4 py-1.5 rounded-full bg-slate-950/75 border border-amber-400/30 text-center max-w-[90%]">
-                    <div id="preview-name-text" class="text-xs font-bold text-amber-300 truncate">ผู้ร่วมสืบสานประเพณี</div>
-                    <div id="preview-wish-text" class="text-[11px] text-slate-300 truncate">ขอขมาพระแม่คงคา และขอให้มีความสุขความเจริญ</div>
-                </div>
+                <!-- ปุ่มเปิด/ปิดหน้าต่าง QR Code -->
+                <button type="button" id="toggle-qr-dock-btn" onclick="toggleQrDockVisibility()" class="btn glass-panel btn-icon-glass" title="แสดง/ซ่อน QR Code มุมซ้ายล่าง">
+                    <span>📱</span>
+                    <span>ซ่อน/แสดง QR</span>
+                </button>
 
-                <!-- ผิวน้ำจำลองด้านล่างการ์ด -->
-                <div class="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sky-500/20 to-transparent pointer-events-none"></div>
+                <!-- ปุ่มจัดการลิงก์ QR & ตั้งค่าเชื่อมต่อ -->
+                <button type="button" onclick="openQrManagerModal()" class="btn glass-panel btn-icon-glass" title="ตั้งค่าลิงก์สาธารณะและตัวเลือกเชื่อมต่อ">
+                    <span>🔗</span>
+                    <span>ตั้งค่า QR / ลิงก์</span>
+                </button>
+
+                <!-- ปุ่มจุดพลุ -->
+                <button type="button" onclick="launchRandomFirework(true)" class="btn glass-panel btn-icon-glass" title="จุดพลุฉลอง">
+                    <span>🎆</span>
+                    <span>จุดพลุ</span>
+                </button>
+
+                <!-- ปุ่มเปิด/ปิดเสียง -->
+                <button type="button" id="audio-toggle-btn" onclick="toggleAudio()" class="btn glass-panel btn-icon-glass" title="เปิด/ปิดเสียงบรรยากาศ">
+                    <span id="audio-icon-emoji">🔇</span>
+                    <span id="audio-label-text">เปิดเสียง</span>
+                </button>
+
+                <!-- ปุ่มขยายเต็มจอ (Fullscreen) -->
+                <button type="button" id="fullscreen-btn" onclick="toggleFullscreen()" class="btn glass-panel btn-icon-glass" title="ขยายเต็มจอแสดงผล">
+                    <span id="fullscreen-icon-emoji">⛶</span>
+                    <span id="fullscreen-label-text">เต็มจอ</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- การ์ดแจ้งเตือนเมื่อมีกระทงใหม่ลอยลงน้ำ -->
+        <div id="live-toast-container"></div>
+
+        <!-- แผง QR Code มุมซ้ายล่าง (Host QR Dock) -->
+        <aside id="qr-panel-dock" class="glass-panel qr-bottom-left-dock">
+            <div id="stage-sync-badge" class="sync-status-badge sync-warn">● กำลังเปิดห้อง PeerJS...</div>
+            <div style="font-size: 0.86rem; font-weight: 700; color: #fde68a;">📱 สแกน QR ลอยกระทงจากมือถือ</div>
+            <div style="margin-top: 0.35rem; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+                <span class="room-code-pill">ห้อง: <span id="stage-room-code">LK-XXXX</span></span>
+                <button type="button" onclick="randomizeRoomCode()" class="btn" style="padding: 0.25rem 0.5rem; border-radius: 0.65rem; background: rgba(51,65,85,0.85); color: #fde68a; font-size: 0.72rem;" title="สุ่มรหัสห้องใหม่">🎲</button>
+            </div>
+            <div class="qr-box-white">
+                <div id="qrcode-canvas-container"></div>
+            </div>
+            <div id="qr-url-hint" style="font-size: 0.68rem; color: #cbd5e1; line-height: 1.35; word-break: break-all;">
+                กำลังสร้างลิงก์มือถือ...
+            </div>
+            <div style="margin-top: 0.5rem; display: flex; gap: 0.35rem; justify-content: center; flex-wrap: wrap;">
+                <button type="button" onclick="openQrManagerModal()" class="btn" style="padding: 0.34rem 0.65rem; border-radius: 0.7rem; background: rgba(250,204,21,0.2); border: 1px solid rgba(250,204,21,0.45); color: #fde047; font-size: 0.72rem; font-weight: 600;">
+                    🔗 แก้ไขลิงก์ / คัดลอก
+                </button>
+                <button type="button" onclick="switchToMobileView()" class="btn" style="padding: 0.34rem 0.65rem; border-radius: 0.7rem; background: rgba(30,41,59,0.9); border: 1px solid rgba(255,255,255,0.18); color: #e2e8f0; font-size: 0.72rem;">
+                    📲 ทดสอบจอมือถือ
+                </button>
+            </div>
+        </aside>
+
+        <!-- แถบควบคุมหลักด้านล่าง -->
+        <footer>
+            <div class="glass-panel footer-dock">
+                <!-- ปุ่มสร้างและลอยกระทงบนหน้าจอนี้เอง -->
+                <button type="button" onclick="openCreatorModal()" class="btn btn-primary-launch">
+                    <span style="font-size: 1.4rem;">🪷</span>
+                    <span>ลอยกระทงบนจอนี้</span>
+                </button>
+
+                <!-- ปุ่มล้างกระทงทั้งหมด -->
+                <button type="button" onclick="openClearConfirmModal()" class="btn btn-secondary-dock">
+                    <span>🗑️</span>
+                    <span>ล้างกระทงทั้งหมด</span>
+                </button>
+            </div>
+            <p class="footer-hint">
+                สแกน QR Code มุมซ้ายล่างด้วยมือถือเพื่อส่งกระทงขึ้นจอ • หรือคลิกที่กระทงในแม่น้ำเพื่ออ่านคำอธิษฐาน
+            </p>
+        </footer>
+    </div>
+
+    <!-- ==========================================
+         2. หน้าต่าง Pop-up สร้างกระทงบนหน้าจอหลัก (Creator Modal)
+         ========================================== -->
+    <div id="creator-modal" class="modal-backdrop" onclick="closeCreatorModal(event)">
+        <div class="creator-card modal-animate" onclick="event.stopPropagation()">
+            <button type="button" onclick="closeCreatorModal()" class="btn modal-close-btn" title="ปิดหน้าต่าง">✕</button>
+
+            <div style="text-align: center;">
+                <h2 style="font-size: 1.35rem; font-weight: 700; color: #fcd34d;">🪷 สร้างกระทงของคุณ</h2>
+                <p style="font-size: 0.82rem; color: #cbd5e1; margin-top: 0.2rem;">เลือกรูปแบบกระทง ใส่ชื่อ และอธิษฐานขอพรพระแม่คงคา</p>
+            </div>
+
+            <!-- ตัวอย่างกระทงแบบ Live Preview -->
+            <div class="preview-stage">
+                <div style="font-size: 0.72rem; color: #fde68a; margin-bottom: 0.2rem;">ตัวอย่างกระทงของคุณ</div>
+                <div id="preview-krathong-svg" class="preview-art krathong-bob"></div>
+                <div class="preview-badge-box">
+                    <div id="preview-name-text" style="font-size: 0.85rem; font-weight: 700; color: #fcd34d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ผู้ร่วมสืบสานประเพณี</div>
+                    <div id="preview-wish-text" style="font-size: 0.74rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ขอขมาพระแม่คงคา ขอให้ชีวิตราบรื่นมีความสุข</div>
+                </div>
             </div>
 
             <!-- ขั้นตอนที่ 1: เลือกแบบกระทง -->
-            <div>
-                <label class="block text-sm font-semibold text-amber-200 mb-2.5 flex items-center gap-1.5">
-                    <span class="w-5 h-5 rounded-full bg-amber-400 text-slate-950 text-xs font-bold flex items-center justify-center">1</span>
-                    เลือกแบบกระทง (5 สไตล์)
-                </label>
-                <div id="krathong-selector-grid" class="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
-                    <!-- การ์ดตัวเลือกกระทงจะถูกสร้างจาก JS -->
-                </div>
+            <div class="section-label">
+                <span class="step-num">1</span>
+                <span>เลือกรูปแบบกระทง (5 สไตล์)</span>
             </div>
+            <div id="krathong-selector-grid" class="krathong-grid"></div>
 
             <!-- ขั้นตอนที่ 2: กรอกชื่อและคำอธิษฐาน -->
-            <div class="space-y-3.5">
-                <label class="block text-sm font-semibold text-amber-200 flex items-center gap-1.5">
-                    <span class="w-5 h-5 rounded-full bg-amber-400 text-slate-950 text-xs font-bold flex items-center justify-center">2</span>
-                    ใส่ชื่อและคำอธิษฐาน
-                </label>
+            <div class="section-label">
+                <span class="step-num">2</span>
+                <span>ใส่ชื่อและคำอธิษฐาน</span>
+            </div>
 
-                <div>
-                    <input type="text" id="input-user-name" maxlength="28" placeholder="ชื่อของคุณ หรือ ครอบครัว (เช่น น้องมะลิ)" 
-                        oninput="updateLivePreview()"
-                        class="w-full px-4 py-3 rounded-2xl bg-slate-900/90 border border-slate-700 focus:border-amber-400 focus:outline-none text-white placeholder-slate-400 text-sm transition-colors">
-                </div>
+            <div class="form-group">
+                <input type="text" id="input-user-name" maxlength="32" placeholder="ชื่อของคุณ หรือ ครอบครัว (เช่น น้องมะลิ, ครอบครัวใจดี)"
+                    oninput="updateLivePreview()" class="text-input">
+            </div>
 
-                <div>
-                    <textarea id="input-user-wish" rows="2" maxlength="90" placeholder="พิมพ์คำอธิษฐาน หรือขอขมาพระแม่คงคา..." 
-                        oninput="updateLivePreview()"
-                        class="w-full px-4 py-2.5 rounded-2xl bg-slate-900/90 border border-slate-700 focus:border-amber-400 focus:outline-none text-white placeholder-slate-400 text-sm resize-none transition-colors"></textarea>
-                    
-                    <!-- คำอธิษฐานสำเร็จรูปกดเลือกง่ายๆ -->
-                    <div class="flex flex-wrap gap-1.5 mt-2">
-                        <button type="button" onclick="selectPresetWish('ขอขมาพระแม่คงคา ขอให้ชีวิตราบรื่นมีความสุข')" class="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-amber-500/20 text-amber-200/90 border border-white/10 transition-colors">
-                            🙏 ขอขมาพระแม่คงคา
-                        </button>
-                        <button type="button" onclick="selectPresetWish('ขอให้สุขภาพแข็งแรง ปราศจากโรคภัย')" class="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-amber-500/20 text-amber-200/90 border border-white/10 transition-colors">
-                            💪 สุขภาพแข็งแรง
-                        </button>
-                        <button type="button" onclick="selectPresetWish('ขอให้การงานรุ่งเรือง การเงินคล่องตัว')" class="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-amber-500/20 text-amber-200/90 border border-white/10 transition-colors">
-                            💰 การงานรุ่งเรือง
-                        </button>
-                        <button type="button" onclick="selectPresetWish('ขอให้สมหวังในความรัก พบเจอแต่สิ่งดีๆ')" class="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-amber-500/20 text-amber-200/90 border border-white/10 transition-colors">
-                            💖 สมหวังความรัก
-                        </button>
-                    </div>
+            <div class="form-group">
+                <textarea id="input-user-wish" rows="2" maxlength="100" placeholder="พิมพ์คำอธิษฐาน หรือเลือกคำอวยพรยอดนิยมด้านล่าง..."
+                    oninput="updateLivePreview()" class="textarea-input"></textarea>
+                
+                <!-- ปุ่มชิปคำอธิษฐานสำเร็จรูป -->
+                <div class="preset-chips">
+                    <button type="button" onclick="selectPresetWish('ขอขมาพระแม่คงคา ขอให้ชีวิตราบรื่นมีความสุข')" class="chip-btn">🙏 ขอขมาพระแม่คงคา</button>
+                    <button type="button" onclick="selectPresetWish('ขอให้สุขภาพร่างกายแข็งแรง ปราศจากโรคภัย')" class="chip-btn">💪 สุขภาพแข็งแรง</button>
+                    <button type="button" onclick="selectPresetWish('ขอให้การงานก้าวหน้า การเงินไหลมาเทมา')" class="chip-btn">💰 การงานรุ่งเรือง</button>
+                    <button type="button" onclick="selectPresetWish('ขอให้การเรียนสำเร็จ สมหวังดังตั้งใจ')" class="chip-btn">🎓 การเรียนสำเร็จ</button>
+                    <button type="button" onclick="selectPresetWish('ขอให้ครอบครัวอบอุ่น พบเจอแต่กัลยาณมิตร')" class="chip-btn">💖 ครอบครัวมีความสุข</button>
                 </div>
             </div>
 
-            <!-- ขั้นตอนที่ 3: ปุ่มปล่อยกระทงลงแม่น้ำ -->
-            <div class="pt-1 sticky bottom-2 z-20">
-                <button id="release-krathong-btn" onclick="submitKrathong()" class="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-400 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-base sm:text-lg shadow-2xl shadow-amber-500/40 flex items-center justify-center gap-2.5 transition-all active:scale-95">
-                    <span class="text-2xl">🌊</span>
-                    <span>ลอยกระทงลงสู่แม่น้ำ</span>
+            <!-- ปุ่มปล่อยกระทง -->
+            <button type="button" onclick="submitKrathong(false)" class="btn btn-submit-krathong">
+                <span style="font-size: 1.35rem;">🌊</span>
+                <span>ลอยกระทงลงสู่แม่น้ำ</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         3. หน้าต่างยืนยันการล้างกระทงทั้งหมด (Clear All Confirm)
+         ========================================== -->
+    <div id="clear-confirm-modal" class="modal-backdrop" onclick="closeClearConfirmModal(event)">
+        <div class="small-modal-card modal-animate" onclick="event.stopPropagation()">
+            <div style="font-size: 2.75rem; margin-bottom: 0.5rem;">🗑️</div>
+            <h3 style="font-size: 1.2rem; font-weight: 700; color: #fecaca;">ล้างกระทงทั้งหมดใช่ไหม?</h3>
+            <p style="font-size: 0.86rem; color: #cbd5e1; margin-top: 0.45rem; line-height: 1.5;">
+                กระทงทั้งหมดในแม่น้ำและข้อมูลที่บันทึกไว้จะถูกลบออก และรีเซ็ตตัวนับจำนวนกลับเป็น <strong style="color: #fcd34d;">0 ใบ</strong> ทันที
+            </p>
+            <div class="confirm-actions">
+                <button type="button" onclick="closeClearConfirmModal()" class="btn" style="padding: 0.75rem; border-radius: 0.95rem; background: rgba(51, 65, 85, 0.9); color: #f1f5f9; font-weight: 600;">
+                    ยกเลิก
+                </button>
+                <button type="button" onclick="confirmClearAllKrathongs()" class="btn" style="padding: 0.75rem; border-radius: 0.95rem; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); color: #ffffff; font-weight: 700;">
+                    ยืนยันล้างทั้งหมด
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- ========================================== -->
-    <!-- 4. หน้าต่างแสดงคำอธิษฐานเมื่อคลิกกระทงในน้ำ -->
-    <!-- ========================================== -->
-    <div id="wish-detail-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm" onclick="closeWishDetailModal(event)">
-        <div class="glass-panel w-full max-w-sm rounded-3xl p-6 text-center border border-amber-400/40 shadow-2xl relative" onclick="event.stopPropagation()">
-            <button onclick="closeWishDetailModal()" class="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white">
-                <i data-lucide="x" class="w-4 h-4"></i>
-            </button>
-            <div id="modal-krathong-art" class="w-28 h-28 mx-auto mb-3 krathong-bob"></div>
-            <div class="inline-block px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-medium mb-2" id="modal-krathong-type">
-                กระทงใบตองกลีบกุหลาบ
+    <!-- ==========================================
+         4. หน้าต่างอ่านคำอธิษฐานเมื่อคลิกกระทงในน้ำ (Wish Detail Modal)
+         ========================================== -->
+    <div id="wish-detail-modal" class="modal-backdrop" onclick="closeWishDetailModal(event)">
+        <div class="small-modal-card modal-animate" onclick="event.stopPropagation()">
+            <button type="button" onclick="closeWishDetailModal()" class="btn modal-close-btn" title="ปิด">✕</button>
+            <div id="modal-krathong-art" style="width: 7.5rem; height: 7.5rem; margin: 0 auto 0.5rem;" class="krathong-bob"></div>
+            <div id="modal-krathong-type" style="display: inline-block; padding: 0.2rem 0.7rem; border-radius: 9999px; background: rgba(250, 204, 21, 0.16); color: #fde047; font-size: 0.74rem; font-weight: 600; margin-bottom: 0.45rem;"></div>
+            <h3 id="modal-sender-name" style="font-size: 1.2rem; font-weight: 700; color: #ffffff;"></h3>
+            <div style="margin-top: 0.75rem; padding: 0.85rem; border-radius: 1rem; background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.12);">
+                <p id="modal-wish-content" style="font-size: 0.92rem; color: #fef3c7; line-height: 1.55;"></p>
             </div>
-            <h3 id="modal-sender-name" class="text-lg font-bold text-white mb-2">คุณสมชาย</h3>
-            <div class="p-4 rounded-2xl bg-slate-900/80 border border-white/10 text-amber-100 text-sm leading-relaxed italic">
-                “<span id="modal-wish-content">ขอให้มีความสุขความเจริญ</span>”
-            </div>
-            <button onclick="launchRandomFirework(true)" class="mt-4 w-full py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold border border-amber-400/30 transition-colors">
-                ✨ ร่วมอนุโมทนา / จุดพลุฉลอง
-            </button>
         </div>
     </div>
 
-    <!-- โหลด Firebase SDK แบบ Module สำหรับซิงก์ข้ามอุปกรณ์แบบ Real-time -->
+    <!-- ==========================================
+         5. หน้าต่างจัดการ QR Code, ลิงก์สาธารณะ และ Firebase เสริม
+         ========================================== -->
+    <div id="qr-manager-modal" class="modal-backdrop" onclick="closeQrManagerModal(event)">
+        <div class="creator-card modal-animate" style="max-width: 36rem;" onclick="event.stopPropagation()">
+            <button type="button" onclick="closeQrManagerModal()" class="btn modal-close-btn" title="ปิดหน้าต่าง">✕</button>
+
+            <div style="text-align: center; margin-bottom: 0.85rem;">
+                <h2 style="font-size: 1.3rem; font-weight: 700; color: #fcd34d;">📱 จัดการ QR Code & ลิงก์มือถือ</h2>
+                <p style="font-size: 0.8rem; color: #cbd5e1; margin-top: 0.2rem;">
+                    ระบบเชื่อมต่ออัตโนมัติผ่าน PeerJS (WebRTC) ห้อง <strong id="modal-room-label" style="color:#fde047;">LK-XXXX</strong>
+                </p>
+            </div>
+
+            <!-- กล่องคำเตือนกรณีเปิดจาก file:// หรือ Sandbox -->
+            <div id="qr-local-warning-box" style="display:none; padding: 0.75rem 0.9rem; border-radius: 0.95rem; background: rgba(180, 83, 9, 0.28); border: 1px solid rgba(251, 191, 36, 0.6); font-size: 0.78rem; color: #fef3c7; line-height: 1.5; margin-bottom: 0.85rem;">
+                ⚠️ <strong>ตรวจพบว่าคุณกำลังเปิดหน้าเว็บจากเครื่องในเครื่อง (`file://` / `localhost`) หรือหน้าพรีวิวส่วนตัว (Sandbox)</strong><br>
+                โทรศัพท์มือถือคนละเครื่องจะสแกนเข้าหน้านี้ไม่ได้จนกว่าจะอัปโหลดไฟล์นี้ขึ้นเว็บโฮสติ้งฟรี (เช่น <strong>Netlify Drop</strong> หรือ <strong>GitHub Pages</strong>) แล้วนำลิงก์ <code>https://...</code> มาวางด้านล่าง
+            </div>
+
+            <!-- QR Code ขนาดใหญ่พร้อมคัดลอกลิงก์ -->
+            <div style="display: flex; flex-direction: column; align-items: center; margin-bottom: 0.9rem;">
+                <div class="qr-box-white" style="padding: 0.85rem;">
+                    <div id="modal-qrcode-container"></div>
+                </div>
+                <div id="modal-full-mobile-url" style="font-size: 0.74rem; color: #93c5fd; word-break: break-all; text-align: center; margin-top: 0.35rem; max-width: 95%;"></div>
+            </div>
+
+            <!-- ช่องวาง URL สาธารณะ (https://...) -->
+            <div class="form-group">
+                <label style="font-size: 0.82rem; font-weight: 600; color: #fde68a; display: block; margin-bottom: 0.35rem;">
+                    🌐 วาง URL สาธารณะของคุณ (ถ้าเปิดจากไฟล์ในเครื่อง/พรีวิว) เพื่ออัปเดต QR Code ทันที:
+                </label>
+                <div style="display: flex; gap: 0.45rem;">
+                    <input type="url" id="custom-public-url-input" placeholder="https://your-site.netlify.app/loy-krathong.html" class="text-input" style="padding: 0.65rem 0.85rem; font-size: 0.85rem;">
+                    <button type="button" onclick="applyCustomPublicUrl()" class="btn" style="padding: 0.65rem 1rem; border-radius: 0.95rem; background: #facc15; color: #0f172a; font-weight: 700; font-size: 0.84rem; white-space: nowrap;">
+                        อัปเดต QR
+                    </button>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 0.55rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                <button type="button" onclick="copyMobileLinkToClipboard()" class="btn" style="flex: 1; padding: 0.72rem 1rem; border-radius: 0.95rem; background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%); color: #ffffff; font-weight: 700; font-size: 0.88rem;">
+                    📋 คัดลอกลิงก์สำหรับมือถือ
+                </button>
+                <button type="button" onclick="resetCustomPublicUrl()" class="btn btn-icon-glass" style="padding: 0.72rem 0.95rem;">
+                    รีเซ็ตลิงก์
+                </button>
+            </div>
+
+            <!-- ส่วนเสริม: Firebase Realtime Database (เผื่อเครือข่ายบล็อก WebRTC) -->
+            <details style="border-top: 1px solid rgba(255,255,255,0.12); padding-top: 0.75rem;">
+                <summary style="cursor: pointer; font-size: 0.82rem; font-weight: 600; color: #fcd34d;">
+                    🔥 ตัวเลือกเสริม: ตั้งค่า Firebase Realtime Database (กรณีเครือข่ายองค์กรบล็อก WebRTC)
+                </summary>
+                <div style="margin-top: 0.65rem;">
+                    <p style="font-size: 0.74rem; color: #cbd5e1; margin-bottom: 0.55rem; line-height: 1.45;">
+                        โดยปกติระบบจะใช้ <strong>PeerJS (WebRTC)</strong> เชื่อมต่ออัตโนมัติโดยไม่ต้องตั้งค่าใดๆ แต่หากต้องการใช้ Firebase เพิ่มเติม สามารถกรอกค่าด้านล่างได้
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                        <input type="text" id="fb-apiKey" placeholder="apiKey (AIzaSy...)" class="text-input" style="padding:0.5rem 0.7rem; font-size:0.8rem;">
+                        <input type="text" id="fb-authDomain" placeholder="authDomain" class="text-input" style="padding:0.5rem 0.7rem; font-size:0.8rem;">
+                        <input type="text" id="fb-databaseURL" placeholder="databaseURL (https://...-rtdb.firebaseio.com)" class="text-input" style="padding:0.5rem 0.7rem; font-size:0.8rem; grid-column: span 2;">
+                        <input type="text" id="fb-projectId" placeholder="projectId" class="text-input" style="padding:0.5rem 0.7rem; font-size:0.8rem;">
+                        <input type="text" id="fb-appId" placeholder="appId" class="text-input" style="padding:0.5rem 0.7rem; font-size:0.8rem;">
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 0.6rem;">
+                        <button type="button" onclick="saveFirebaseConfigFromModal()" class="btn" style="flex: 1; padding: 0.6rem; border-radius: 0.85rem; background: #10b981; color: #052e16; font-weight: 700; font-size: 0.82rem;">
+                            💾 บันทึก Firebase
+                        </button>
+                        <button type="button" onclick="clearFirebaseConfigFromModal()" class="btn btn-danger-glass" style="padding: 0.6rem 0.85rem; font-size: 0.8rem;">
+                            ล้างค่า
+                        </button>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </div>
+
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // นำเข้า Firebase Realtime Database (ตัวเลือกเสริมกรณีเครือข่ายบล็อก WebRTC)
+        import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getDatabase, ref, push, onChildAdded, remove, set, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-        window.FirebaseSyncBridge = {
-            enabled: false,
-            db: null,
-            user: null,
-            appId: typeof __app_id !== 'undefined' ? __app_id : 'loy-krathong-online-app',
-            seenIds: new Set(),
-
-            async init(roomCode, onRemoteKrathong) {
-                try {
-                    if (typeof __firebase_config === 'undefined' || !__firebase_config) {
-                        this.updateStatusUI(false, 'โหมดซิงก์ในเบราว์เซอร์');
-                        return;
-                    }
-                    const firebaseConfig = JSON.parse(__firebase_config);
-                    const app = initializeApp(firebaseConfig);
-                    const auth = getAuth(app);
-                    this.db = getFirestore(app);
-
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-
-                    this.user = auth.currentUser;
-                    if (!this.user) {
-                        this.updateStatusUI(false, 'โหมดออฟไลน์');
-                        return;
-                    }
-
-                    this.enabled = true;
-                    this.updateStatusUI(true, 'ซิงก์ข้ามอุปกรณ์พร้อมใช้งาน');
-
-                    // ฟังข้อมูลกระทงใหม่ในห้องนี้แบบ Real-time (Public Path ตามกฎระบบ)
-                    const colRef = collection(this.db, 'artifacts', this.appId, 'public', 'data', `krathongs_room_${roomCode}`);
-                    const sessionStartTime = Date.now() - 15000; // โหลดกระทงที่เพิ่งลอยใน 15 วินาทีล่าสุดด้วย
-
-                    onSnapshot(colRef, (snapshot) => {
-                        snapshot.docChanges().forEach((change) => {
-                            if (change.type === 'added') {
-                                const docId = change.doc.id;
-                                if (this.seenIds.has(docId)) return;
-                                this.seenIds.add(docId);
-
-                                const data = change.doc.data();
-                                // แสดงเฉพาะกระทงใหม่ (ป้องกันการเด้งซ้ำซ้อนจากเครื่องตัวเอง)
-                                if (data && data.clientId !== window.CLIENT_INSTANCE_ID && (data.timestamp || 0) >= sessionStartTime) {
-                                    onRemoteKrathong(data);
-                                }
-                            }
-                        });
-                    }, (err) => {
-                        console.warn('Realtime sync listener warning:', err);
-                        this.updateStatusUI(false, 'โหมดซิงก์ในเครื่อง');
-                    });
-                } catch (e) {
-                    console.warn('Firebase init fallback:', e);
-                    this.updateStatusUI(false, 'โหมดซิงก์ในเบราว์เซอร์');
-                }
-            },
-
-            async sendKrathong(roomCode, payload) {
-                if (!this.enabled || !this.db || !this.user) return false;
-                try {
-                    const colRef = collection(this.db, 'artifacts', this.appId, 'public', 'data', `krathongs_room_${roomCode}`);
-                    const docRef = await addDoc(colRef, {
-                        ...payload,
-                        clientId: window.CLIENT_INSTANCE_ID,
-                        userId: this.user.uid
-                    });
-                    this.seenIds.add(docRef.id);
-                    return true;
-                } catch (e) {
-                    console.warn('Failed to push remote krathong:', e);
-                    return false;
-                }
-            },
-
-            updateStatusUI(isCloudConnected, text) {
-                const dot = document.getElementById('sync-dot');
-                const statusText = document.getElementById('sync-status-text');
-                const mobileSub = document.getElementById('mobile-sync-subtitle');
-                if (dot) {
-                    dot.className = isCloudConnected
-                        ? 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse'
-                        : 'w-2 h-2 rounded-full bg-amber-400';
-                }
-                if (statusText) {
-                    statusText.textContent = `• ${text}`;
-                }
-                if (mobileSub && isCloudConnected) {
-                    mobileSub.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span><span>เชื่อมต่อจอใหญ่สดแล้ว (${text})</span>`;
-                }
-            }
-        };
-    </script>
-
-    <script>
         // ==========================================
-        // 1. ข้อมูลแบบกระทงและ SVG กราฟิกสวยงาม
+        // 1. ข้อมูลรูปแบบกระทงทั้ง 5 แบบ (SVG คมชัดสูง)
         // ==========================================
         const KRATHONG_TYPES = [
             {
                 id: 'banana_leaf',
-                name: 'ใบตองกลีบกุหลาบ',
+                name: 'กระทงใบตองกลีบกุหลาบ',
                 shortName: 'ใบตองดั้งเดิม',
                 badge: 'ยอดนิยม',
                 getSvg: (uid) => `
-                    <svg viewBox="0 0 160 150" class="w-full h-full drop-shadow-[0_10px_12px_rgba(0,0,0,0.6)]">
+                    <svg viewBox="0 0 160 150" style="width:100%;height:100%;filter:drop-shadow(0 10px 12px rgba(0,0,0,0.65));">
                         <defs>
                             <linearGradient id="leafDark_${uid}" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stop-color="#15803d"/>
@@ -591,11 +1230,8 @@
                                 <stop offset="100%" stop-color="#166534"/>
                             </linearGradient>
                         </defs>
-                        <!-- แสงสะท้อนใต้กระทง -->
                         <ellipse cx="80" cy="132" rx="58" ry="10" fill="rgba(250, 204, 21, 0.25)"/>
-                        <!-- ฐานหยวกกล้วย -->
                         <path d="M26,105 Q80,128 134,105 L126,122 Q80,140 34,122 Z" fill="url(#leafDark_${uid})"/>
-                        <!-- กลีบใบตองชั้นล่าง -->
                         <g fill="url(#leafLight_${uid})" stroke="#052e16" stroke-width="1">
                             <path d="M22,105 L34,78 L46,108 Z"/>
                             <path d="M40,110 L54,76 L68,112 Z"/>
@@ -603,7 +1239,6 @@
                             <path d="M92,112 L106,76 L120,110 Z"/>
                             <path d="M114,108 L126,78 L138,105 Z"/>
                         </g>
-                        <!-- ดอกดาวเรืองและดอกบานไม่รู้โรยประดับ -->
                         <circle cx="48" cy="96" r="7" fill="#f59e0b"/>
                         <circle cx="48" cy="96" r="3" fill="#fef08a"/>
                         <circle cx="80" cy="100" r="8" fill="#ea580c"/>
@@ -612,17 +1247,13 @@
                         <circle cx="112" cy="96" r="3" fill="#fef08a"/>
                         <circle cx="64" cy="102" r="4.5" fill="#d946ef"/>
                         <circle cx="96" cy="102" r="4.5" fill="#d946ef"/>
-                        <!-- ธูป 3 ดอก -->
                         <line x1="72" y1="92" x2="66" y2="42" stroke="#92400e" stroke-width="2" stroke-linecap="round"/>
                         <line x1="80" y1="92" x2="80" y2="38" stroke="#92400e" stroke-width="2" stroke-linecap="round"/>
                         <line x1="88" y1="92" x2="94" y2="42" stroke="#92400e" stroke-width="2" stroke-linecap="round"/>
-                        <!-- ปลายธูปติดไฟ -->
                         <circle cx="66" cy="42" r="2" fill="#ef4444"/>
                         <circle cx="80" cy="38" r="2" fill="#ef4444"/>
                         <circle cx="94" cy="42" r="2" fill="#ef4444"/>
-                        <!-- เทียนพรรษาตรงกลาง -->
                         <rect x="76" y="56" width="8" height="36" rx="2" fill="#facc15"/>
-                        <!-- เปลวไฟเทียน -->
                         <g class="candle-flame">
                             <ellipse cx="80" cy="44" rx="7" ry="13" fill="rgba(251, 191, 36, 0.35)"/>
                             <path d="M80,34 Q86,45 80,53 Q74,45 80,34 Z" fill="#fef08a"/>
@@ -633,11 +1264,11 @@
             },
             {
                 id: 'lotus_pink',
-                name: 'กระทงดอกบัวหลวงสีชมพู',
+                name: 'กระทงดอกบัวสีชมพู',
                 shortName: 'ดอกบัวชมพู',
                 badge: 'สิริมงคล',
                 getSvg: (uid) => `
-                    <svg viewBox="0 0 160 150" class="w-full h-full drop-shadow-[0_10px_12px_rgba(0,0,0,0.6)]">
+                    <svg viewBox="0 0 160 150" style="width:100%;height:100%;filter:drop-shadow(0 10px 12px rgba(0,0,0,0.65));">
                         <defs>
                             <linearGradient id="lotusOuter_${uid}" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stop-color="#f472b6"/>
@@ -649,17 +1280,13 @@
                             </linearGradient>
                         </defs>
                         <ellipse cx="80" cy="132" rx="60" ry="10" fill="rgba(244, 114, 182, 0.25)"/>
-                        <!-- ใบบัวรองฐาน -->
                         <ellipse cx="80" cy="118" rx="62" ry="14" fill="#15803d"/>
-                        <!-- กลีบบัวชั้นนอก -->
                         <path d="M22,110 Q18,82 46,85 Q52,108 42,116 Z" fill="url(#lotusOuter_${uid})"/>
                         <path d="M138,110 Q142,82 114,85 Q108,108 118,116 Z" fill="url(#lotusOuter_${uid})"/>
                         <path d="M40,114 Q45,74 68,82 Q70,110 60,118 Z" fill="url(#lotusOuter_${uid})"/>
                         <path d="M120,114 Q115,74 92,82 Q90,110 100,118 Z" fill="url(#lotusOuter_${uid})"/>
-                        <!-- กลีบบัวชั้นใน -->
                         <path d="M56,115 Q62,70 80,68 Q98,70 104,115 Z" fill="url(#lotusInner_${uid})"/>
                         <path d="M66,116 Q72,76 80,74 Q88,76 94,116 Z" fill="#fce7f3"/>
-                        <!-- ธูปเทียน -->
                         <line x1="74" y1="85" x2="69" y2="42" stroke="#92400e" stroke-width="2"/>
                         <line x1="86" y1="85" x2="91" y2="42" stroke="#92400e" stroke-width="2"/>
                         <rect x="76.5" y="54" width="7" height="32" rx="2" fill="#fde047"/>
@@ -672,11 +1299,11 @@
             },
             {
                 id: 'bread_turtle',
-                name: 'กระทงขนมปังพี่เต่า (รักษ์โลก)',
+                name: 'กระทงขนมปังพี่เต่า',
                 shortName: 'ขนมปังเต่า',
-                badge: 'รักษ์โลก 100%',
+                badge: 'รักษ์โลก',
                 getSvg: (uid) => `
-                    <svg viewBox="0 0 160 150" class="w-full h-full drop-shadow-[0_10px_12px_rgba(0,0,0,0.6)]">
+                    <svg viewBox="0 0 160 150" style="width:100%;height:100%;filter:drop-shadow(0 10px 12px rgba(0,0,0,0.65));">
                         <defs>
                             <radialGradient id="breadShell_${uid}" cx="50%" cy="40%" r="60%">
                                 <stop offset="0%" stop-color="#f59e0b"/>
@@ -685,23 +1312,16 @@
                             </radialGradient>
                         </defs>
                         <ellipse cx="80" cy="132" rx="60" ry="10" fill="rgba(245, 158, 11, 0.25)"/>
-                        <!-- ขาเต่า -->
                         <ellipse cx="42" cy="116" rx="12" ry="7" fill="#d97706"/>
                         <ellipse cx="118" cy="116" rx="12" ry="7" fill="#d97706"/>
-                        <!-- หัวเต่าด้านขวา -->
                         <path d="M126,104 Q148,92 146,108 Q144,118 124,114 Z" fill="#f59e0b"/>
                         <circle cx="139" cy="102" r="2.5" fill="#1e293b"/>
                         <circle cx="140" cy="101.5" r="0.8" fill="#ffffff"/>
-                        <!-- หางเต่า -->
                         <path d="M32,110 L20,106 L30,115 Z" fill="#d97706"/>
-                        <!-- กระดองขนมปัง -->
                         <path d="M32,114 C32,76 128,76 128,114 Z" fill="url(#breadShell_${uid})"/>
-                        <!-- ลวดลายกระดองขนมปัง -->
                         <path d="M52,112 Q80,86 108,112" stroke="#fef3c7" stroke-width="2" fill="none" opacity="0.5"/>
                         <line x1="80" y1="84" x2="80" y2="113" stroke="#fef3c7" stroke-width="2" opacity="0.5"/>
-                        <!-- ฐานขนมปังด้านล่าง -->
                         <rect x="28" y="112" width="104" height="9" rx="4.5" fill="#fde68a"/>
-                        <!-- เทียนและธูป -->
                         <line x1="73" y1="84" x2="68" y2="42" stroke="#92400e" stroke-width="2"/>
                         <line x1="87" y1="84" x2="92" y2="42" stroke="#92400e" stroke-width="2"/>
                         <rect x="76.5" y="52" width="7" height="32" rx="2" fill="#f43f5e"/>
@@ -714,11 +1334,11 @@
             },
             {
                 id: 'coconut_shell',
-                name: 'กระทงกะลามะพร้าวสายรุ้ง',
+                name: 'กระทงกะลามะพร้าว',
                 shortName: 'กะลามะพร้าว',
                 badge: 'อนุรักษ์ไทย',
                 getSvg: (uid) => `
-                    <svg viewBox="0 0 160 150" class="w-full h-full drop-shadow-[0_10px_12px_rgba(0,0,0,0.6)]">
+                    <svg viewBox="0 0 160 150" style="width:100%;height:100%;filter:drop-shadow(0 10px 12px rgba(0,0,0,0.65));">
                         <defs>
                             <linearGradient id="cocoGrad_${uid}" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stop-color="#78350f"/>
@@ -726,16 +1346,13 @@
                             </linearGradient>
                         </defs>
                         <ellipse cx="80" cy="132" rx="54" ry="10" fill="rgba(251, 146, 60, 0.25)"/>
-                        <!-- กะลามะพร้าวขัดมัน -->
                         <path d="M32,96 C32,132 128,132 128,96 Z" fill="url(#cocoGrad_${uid})"/>
                         <ellipse cx="80" cy="96" rx="48" ry="10" fill="#92400e"/>
-                        <!-- ดอกไม้หลากสีเต็มกะลา -->
                         <circle cx="48" cy="94" r="8" fill="#fbbf24"/>
                         <circle cx="64" cy="96" r="7" fill="#f472b6"/>
                         <circle cx="80" cy="97" r="8" fill="#a855f7"/>
                         <circle cx="96" cy="96" r="7" fill="#38bdf8"/>
                         <circle cx="112" cy="94" r="8" fill="#fbbf24"/>
-                        <!-- ธูปเทียน -->
                         <line x1="73" y1="90" x2="68" y2="44" stroke="#d97706" stroke-width="2"/>
                         <line x1="87" y1="90" x2="92" y2="44" stroke="#d97706" stroke-width="2"/>
                         <rect x="76.5" y="54" width="7" height="36" rx="2" fill="#fef08a"/>
@@ -750,18 +1367,17 @@
                 id: 'crystal_lotus',
                 name: 'กระทงน้ำแข็งดอกไม้แฟนซี',
                 shortName: 'น้ำแข็งแฟนซี',
-                badge: 'ละลายเป็นน้ำ',
+                badge: 'แฟนซี',
                 getSvg: (uid) => `
-                    <svg viewBox="0 0 160 150" class="w-full h-full drop-shadow-[0_10px_14px_rgba(56,189,248,0.45)]">
+                    <svg viewBox="0 0 160 150" style="width:100%;height:100%;filter:drop-shadow(0 10px 14px rgba(56,189,248,0.45));">
                         <defs>
                             <linearGradient id="iceGrad_${uid}" x1="0" y1="0" x2="1" y2="1">
-                                <stop offset="0%" stop-color="rgba(224, 242, 254, 0.9)"/>
-                                <stop offset="50%" stop-color="rgba(125, 211, 252, 0.75)"/>
-                                <stop offset="100%" stop-color="rgba(56, 189, 248, 0.85)"/>
+                                <stop offset="0%" stop-color="rgba(224, 242, 254, 0.92)"/>
+                                <stop offset="50%" stop-color="rgba(125, 211, 252, 0.78)"/>
+                                <stop offset="100%" stop-color="rgba(56, 189, 248, 0.88)"/>
                             </linearGradient>
                         </defs>
                         <ellipse cx="80" cy="132" rx="58" ry="10" fill="rgba(125, 211, 252, 0.35)"/>
-                        <!-- กลีบน้ำแข็งคริสตัล -->
                         <g fill="url(#iceGrad_${uid})" stroke="#ffffff" stroke-width="1.2">
                             <polygon points="80,72 62,115 98,115"/>
                             <polygon points="52,78 36,112 72,114"/>
@@ -769,11 +1385,9 @@
                             <polygon points="32,88 22,108 50,112"/>
                             <polygon points="128,88 110,112 138,108"/>
                         </g>
-                        <!-- ดอกไม้แช่แข็งด้านใน -->
                         <circle cx="58" cy="102" r="6" fill="#f43f5e" opacity="0.85"/>
                         <circle cx="102" cy="102" r="6" fill="#c084fc" opacity="0.85"/>
                         <circle cx="80" cy="104" r="7" fill="#38bdf8" opacity="0.9"/>
-                        <!-- เทียนสีฟ้าคราม -->
                         <rect x="76.5" y="54" width="7" height="36" rx="2" fill="#e0f2fe"/>
                         <g class="candle-flame">
                             <ellipse cx="80" cy="42" rx="8" ry="13" fill="rgba(125, 211, 252, 0.5)"/>
@@ -785,43 +1399,561 @@
         ];
 
         // ==========================================
-        // 2. ตัวแปรสถานะ (State) ของแอปพลิเคชัน & รหัสห้อง (Room Code)
+        // 2. ตัวแปรสถานะ (State), ห้อง (Room LK-XXXX), PeerJS และระบบสำรอง
         // ==========================================
-        let selectedKrathongId = 'banana_leaf';
-        let totalKrathongsCount = 1284;
-        let floatingKrathongs = [];
-        let krathongIdCounter = 1;
-        let isMobileOnlyMode = false;
-        let customBaseUrl = '';
-        window.CLIENT_INSTANCE_ID = 'client_' + Math.random().toString(36).substring(2, 10);
+        const FB_CONFIG_STORAGE_KEY = 'loy_krathong_firebase_config_v1';
+        const ROOM_STORAGE_KEY = 'loy_krathong_peer_room_v2';
+        const CUSTOM_PUBLIC_URL_KEY = 'loy_krathong_custom_public_url_v2';
 
-        // สร้างหรือดึงรหัสห้อง 4 หลักจาก URL (?room=XXXX)
-        function resolveRoomCode() {
-            const params = new URLSearchParams(window.location.search);
-            let room = params.get('room');
-            if (!room || !/^[A-Z0-9]{4}$/i.test(room)) {
-                room = Math.floor(1000 + Math.random() * 9000).toString();
+        let selectedKrathongId = 'banana_leaf';
+        let floatingKrathongs = [];
+        let savedKrathongRecords = [];
+        let krathongIdCounter = 1;
+        let seenMessageIds = new Set();
+
+        // อ่านพารามิเตอร์จาก URL (?mode=mobile&room=LK-XXXX)
+        const urlParams = new URLSearchParams(window.location.search);
+        const isMobileMode = urlParams.get('mode') === 'mobile';
+
+        function generateRoomId() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let suffix = '';
+            for (let i = 0; i < 4; i++) {
+                suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return `LK-${suffix}`;
+        }
+
+        function normalizeRoomId(raw) {
+            if (!raw) return '';
+            const cleaned = String(raw).toUpperCase().replace(/[^A-Z0-9-]/g, '');
+            if (cleaned.startsWith('LK-') && cleaned.length >= 6) return cleaned.slice(0, 7);
+            const stripped = cleaned.replace(/-/g, '').slice(0, 4);
+            return stripped.length === 4 ? `LK-${stripped}` : '';
+        }
+
+        let currentRoomCode = normalizeRoomId(urlParams.get('room'))
+            || normalizeRoomId(localStorage.getItem(ROOM_STORAGE_KEY))
+            || generateRoomId();
+
+        localStorage.setItem(ROOM_STORAGE_KEY, currentRoomCode);
+
+        function getStorageKeyForRoom() {
+            return `loy_krathong_items_${currentRoomCode}_v2`;
+        }
+
+        // ==========================================
+        // 2.1 ระบบเชื่อมต่ออัตโนมัติ Zero-Config PeerJS (WebRTC)
+        // ==========================================
+        let peerInstance = null;
+        let hostDataConnection = null;
+        let isPeerReady = false;
+        let peerReconnectTimer = null;
+
+        function getHostPeerId(roomCode) {
+            return `loykrathong-th-host-${roomCode.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        }
+
+        function updateConnectionBadgeUI(stageText, stageClass, mobileText, mobileColor) {
+            const stageBadge = document.getElementById('stage-sync-badge');
+            if (stageBadge) {
+                stageBadge.className = `sync-status-badge ${stageClass}`;
+                stageBadge.textContent = stageText;
+            }
+            const headerBadge = document.getElementById('header-live-badge');
+            if (headerBadge && stageText) {
+                headerBadge.textContent = stageText;
+            }
+            const mobileStatus = document.getElementById('mobile-sync-status');
+            if (mobileStatus && mobileText) {
+                mobileStatus.textContent = mobileText;
+                if (mobileColor) mobileStatus.style.color = mobileColor;
+            }
+        }
+
+        function initPeerConnection() {
+            if (peerReconnectTimer) {
+                clearTimeout(peerReconnectTimer);
+                peerReconnectTimer = null;
+            }
+            if (peerInstance) {
+                try { peerInstance.destroy(); } catch (e) {}
+                peerInstance = null;
+            }
+            isPeerReady = false;
+            hostDataConnection = null;
+
+            if (typeof window.Peer !== 'function') {
+                updateConnectionBadgeUI(
+                    '● โหมดสำรองในเครื่อง (Local)',
+                    'sync-demo',
+                    'พร้อมส่ง (โหมดสำรอง)',
+                    '#bae6fd'
+                );
+                return;
+            }
+
+            const hostPeerId = getHostPeerId(currentRoomCode);
+
+            try {
+                if (!isMobileMode) {
+                    // หน้าจอหลัก (Host): เปิดรับการเชื่อมต่อด้วย ID ประจำห้อง
+                    updateConnectionBadgeUI('● กำลังเปิดห้องรับเชื่อมต่อ...', 'sync-warn');
+                    peerInstance = new window.Peer(hostPeerId, {
+                        debug: 0,
+                        config: {
+                            iceServers: [
+                                { urls: 'stun:stun.l.google.com:19302' },
+                                { urls: 'stun:stun1.l.google.com:19302' },
+                                { urls: 'stun:global.stun.twilio.com:3478' }
+                            ]
+                        }
+                    });
+
+                    peerInstance.on('open', () => {
+                        isPeerReady = true;
+                        updateConnectionBadgeUI(`● Online / พร้อมรับกระทงจากมือถือ`, 'sync-connected');
+                    });
+
+                    peerInstance.on('connection', (conn) => {
+                        conn.on('open', () => {
+                            conn.send({ type: 'WELCOME_ACK', room: currentRoomCode });
+                        });
+                        conn.on('data', (packet) => {
+                            if (!packet || typeof packet !== 'object') return;
+                            if (packet.type === 'NEW_KRATHONG' && packet.item) {
+                                handleIncomingKrathong(packet.item, packet.msgId || null, true);
+                                try {
+                                    conn.send({ type: 'KRATHONG_RECEIVED_ACK', msgId: packet.msgId });
+                                } catch (e) {}
+                            }
+                        });
+                    });
+
+                    peerInstance.on('disconnected', () => {
+                        isPeerReady = false;
+                        updateConnectionBadgeUI('● กำลังเชื่อมต่อเครือข่ายใหม่...', 'sync-warn');
+                        try { peerInstance.reconnect(); } catch (e) {}
+                    });
+
+                    peerInstance.on('error', (err) => {
+                        isPeerReady = false;
+                        if (err && err.type === 'unavailable-id') {
+                            // กรณีเปิดหน้าจอหลักซ้อน 2 แท็บด้วยรหัสห้องเดียวกัน
+                            updateConnectionBadgeUI('● ห้องนี้เปิดอยู่แล้ว (โหมดสำรองพร้อม)', 'sync-demo');
+                        } else {
+                            updateConnectionBadgeUI('● พร้อมใช้งาน (โหมดสำรอง/เครือข่ายจำกัด)', 'sync-demo');
+                            peerReconnectTimer = setTimeout(() => initPeerConnection(), 8000);
+                        }
+                    });
+                } else {
+                    // หน้าจอมือถือ (Mobile Controller): เชื่อมต่อไปยัง Host ID ของห้องนั้น
+                    updateConnectionBadgeUI('', '', 'กำลังเชื่อมต่อจอหลัก...', '#fde68a');
+                    peerInstance = new window.Peer({
+                        debug: 0,
+                        config: {
+                            iceServers: [
+                                { urls: 'stun:stun.l.google.com:19302' },
+                                { urls: 'stun:stun1.l.google.com:19302' },
+                                { urls: 'stun:global.stun.twilio.com:3478' }
+                            ]
+                        }
+                    });
+
+                    peerInstance.on('open', () => {
+                        connectMobileToHost(hostPeerId);
+                    });
+
+                    peerInstance.on('error', () => {
+                        isPeerReady = false;
+                        updateConnectionBadgeUI('', '', 'พร้อมส่ง (โหมดสำรอง)', '#bae6fd');
+                    });
+                }
+            } catch (e) {
+                updateConnectionBadgeUI('● โหมดสำรองในเครื่อง', 'sync-demo', 'พร้อมส่ง (โหมดสำรอง)', '#bae6fd');
+            }
+        }
+
+        function connectMobileToHost(hostPeerId) {
+            if (!peerInstance) return;
+            try {
+                const conn = peerInstance.connect(hostPeerId, { reliable: true });
+                hostDataConnection = conn;
+
+                conn.on('open', () => {
+                    isPeerReady = true;
+                    updateConnectionBadgeUI('', '', 'เชื่อมต่อจอหลักสำเร็จ ✓', '#6ee7b7');
+                });
+
+                conn.on('data', (packet) => {
+                    if (packet && (packet.type === 'WELCOME_ACK' || packet.type === 'KRATHONG_RECEIVED_ACK')) {
+                        isPeerReady = true;
+                        updateConnectionBadgeUI('', '', 'เชื่อมต่อจอหลักสำเร็จ ✓', '#6ee7b7');
+                    }
+                });
+
+                conn.on('close', () => {
+                    isPeerReady = false;
+                    updateConnectionBadgeUI('', '', 'กำลังเชื่อมต่อจอหลักใหม่...', '#fde68a');
+                    peerReconnectTimer = setTimeout(() => connectMobileToHost(hostPeerId), 3000);
+                });
+
+                conn.on('error', () => {
+                    isPeerReady = false;
+                    updateConnectionBadgeUI('', '', 'พร้อมส่ง (โหมดสำรอง)', '#bae6fd');
+                });
+            } catch (e) {
+                isPeerReady = false;
+            }
+        }
+
+        // ==========================================
+        // 2.2 ระบบสำรอง BroadcastChannel & LocalStorage (ทดสอบในเครื่องเดียวกันได้ทันที)
+        // ==========================================
+        const localBroadcastChannel = ('BroadcastChannel' in window)
+            ? new BroadcastChannel(`loy_krathong_bc_${currentRoomCode}`)
+            : null;
+
+        if (localBroadcastChannel) {
+            localBroadcastChannel.onmessage = (event) => {
+                const payload = event.data;
+                if (!payload || payload.room !== currentRoomCode) return;
+                if (payload.type === 'NEW_KRATHONG' && payload.item) {
+                    handleIncomingKrathong(payload.item, payload.msgId || null, true);
+                } else if (payload.type === 'CLEAR_ALL') {
+                    applyClearAllLocalOnly();
+                }
+            };
+        }
+
+        window.addEventListener('storage', (event) => {
+            if (event.key === getStorageKeyForRoom() && event.newValue) {
                 try {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('room', room);
-                    window.history.replaceState({}, '', url.toString());
+                    const list = JSON.parse(event.newValue);
+                    if (Array.isArray(list)) {
+                        if (list.length === 0 && floatingKrathongs.length > 0) {
+                            applyClearAllLocalOnly();
+                        } else if (list.length > savedKrathongRecords.length && !isMobileMode) {
+                            const newest = list[list.length - 1];
+                            if (newest && newest.msgId && !seenMessageIds.has(newest.msgId)) {
+                                handleIncomingKrathong(newest, newest.msgId, true);
+                            }
+                        }
+                    }
                 } catch (e) {}
             }
-            return room.toUpperCase();
-        }
-        const CURRENT_ROOM_CODE = resolveRoomCode();
-
-        // ข้อมูลกระทงตัวอย่างเริ่มต้นเพื่อให้แม่น้ำมีชีวิตชีวาทันที
-        const SAMPLE_WISHES = [
-            { name: 'น้องมิ้นท์ & ครอบครัว', wish: 'ขอขมาพระแม่คงคา ขอให้ครอบครัวมีแต่ความสุขความเจริญ', type: 'banana_leaf' },
-            { name: 'คุณกิตติพงษ์', wish: 'ขอให้การงานก้าวหน้า สุขภาพร่างกายแข็งแรงตลอดปี', type: 'lotus_pink' },
-            { name: 'ต้นกล้า รักษ์โลก', wish: 'ลอยกระทงขนมปัง ให้น้องปลาได้อิ่มท้อง ร่วมอนุรักษ์สายน้ำ', type: 'bread_turtle' },
-            { name: 'อริสา (นนทบุรี)', wish: 'ขอให้พบเจอแต่กัลยาณมิตรและสิ่งดีๆ เข้ามาในชีวิต', type: 'crystal_lotus' },
-            { name: 'ลุงสมหมาย ใจดี', wish: 'ขอให้ฝนฟ้าตกต้องตามฤดูกาล พืชผลอุดมสมบูรณ์', type: 'coconut_shell' }
-        ];
+        });
 
         // ==========================================
-        // 3. ระบบเสียง Web Audio API (ดนตรีไทยบรรเลงเบาๆ + เสียงน้ำ/พลุ)
+        // 2.3 ตัวเลือกเสริม Firebase Realtime Database (ถ้าผู้ใช้ตั้งค่าไว้)
+        // ==========================================
+        let activeDb = null;
+
+        function loadSavedFirebaseConfig() {
+            try {
+                const raw = localStorage.getItem(FB_CONFIG_STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && parsed.apiKey && parsed.databaseURL) return parsed;
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        function initOptionalFirebaseSync() {
+            const cfg = loadSavedFirebaseConfig();
+            if (!cfg || !cfg.apiKey || !cfg.databaseURL) {
+                activeDb = null;
+                return;
+            }
+            try {
+                const appName = 'LoyKrathongOptionalFirebase';
+                const existingApp = getApps().find(a => a.name === appName);
+                const app = existingApp || initializeApp(cfg, appName);
+                activeDb = getDatabase(app);
+
+                const krathongsRef = ref(activeDb, `rooms/${currentRoomCode}/krathongs`);
+                onChildAdded(krathongsRef, (snapshot) => {
+                    const key = snapshot.key;
+                    const val = snapshot.val();
+                    if (!val || !val.name) return;
+                    const msgId = val.msgId || key;
+                    if (seenMessageIds.has(msgId)) return;
+
+                    handleIncomingKrathong({
+                        name: String(val.name),
+                        wish: String(val.wish || 'ขอขมาพระแม่คงคา ขอให้ชีวิตราบรื่นมีความสุข'),
+                        type: String(val.type || 'banana_leaf'),
+                        isNew: true
+                    }, msgId, true);
+                });
+
+                onValue(krathongsRef, (snapshot) => {
+                    if (!snapshot.exists() && seenMessageIds.size > 0 && !isMobileMode) {
+                        seenMessageIds.clear();
+                        applyClearAllLocalOnly();
+                    }
+                });
+            } catch (err) {
+                console.warn('Optional Firebase skipped:', err);
+                activeDb = null;
+            }
+        }
+
+        function handleIncomingKrathong(item, msgId, animateArrival) {
+            if (msgId && seenMessageIds.has(msgId)) return;
+            if (msgId) seenMessageIds.add(msgId);
+
+            const record = { ...item, msgId: msgId || `msg_${Date.now()}_${Math.random()}` };
+            savedKrathongRecords.push(record);
+            persistKrathongs();
+
+            if (!isMobileMode) {
+                spawnKrathongOnRiver(record, animateArrival, record.msgId);
+                if (animateArrival) {
+                    playSplashSound();
+                    launchRandomFirework(true);
+                    showSystemToast(`🪷 ${record.name} ลอยกระทงแล้ว!`, `“${record.wish}”`);
+                }
+            }
+        }
+
+        function loadSavedKrathongs() {
+            seenMessageIds.clear();
+            try {
+                const raw = localStorage.getItem(getStorageKeyForRoom());
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        savedKrathongRecords = parsed;
+                        parsed.forEach(p => { if (p.msgId) seenMessageIds.add(p.msgId); });
+                        updateCounterUI();
+                        return;
+                    }
+                }
+            } catch (e) {}
+
+            // กระทงตัวอย่างเริ่มต้น 3 ใบสำหรับห้องใหม่
+            savedKrathongRecords = [
+                { name: 'น้องมิ้นท์ & ครอบครัว', wish: 'ขอขมาพระแม่คงคา ขอให้ครอบครัวมีแต่ความสุขความเจริญ', type: 'banana_leaf', isNew: false },
+                { name: 'คุณกิตติพงษ์', wish: 'ขอให้การงานก้าวหน้า สุขภาพร่างกายแข็งแรงตลอดปี', type: 'lotus_pink', isNew: false },
+                { name: 'ต้นกล้า รักษ์โลก', wish: 'ลอยกระทงขนมปัง ให้น้องปลาได้อิ่มท้อง ร่วมอนุรักษ์สายน้ำ', type: 'bread_turtle', isNew: false }
+            ];
+            persistKrathongs();
+        }
+
+        function persistKrathongs() {
+            try {
+                localStorage.setItem(getStorageKeyForRoom(), JSON.stringify(savedKrathongRecords));
+            } catch (e) {}
+            updateCounterUI();
+        }
+
+        function updateCounterUI() {
+            const countEl = document.getElementById('total-krathong-count');
+            if (countEl) {
+                countEl.textContent = savedKrathongRecords.length.toLocaleString();
+            }
+        }
+
+        // ==========================================
+        // 2.4 ระบบสร้าง QR Code & จัดการลิงก์สาธารณะ
+        // ==========================================
+        function isLocalOrSandboxEnvironment() {
+            const proto = window.location.protocol;
+            const host = window.location.hostname;
+            return proto === 'file:' ||
+                host === 'localhost' ||
+                host === '127.0.0.1' ||
+                host.includes('usercontent.goog') ||
+                host.includes('webcontainer') ||
+                host.includes('stackblitz');
+        }
+
+        function buildMobileTargetUrl() {
+            const savedCustomBase = (localStorage.getItem(CUSTOM_PUBLIC_URL_KEY) || '').trim();
+            if (savedCustomBase) {
+                try {
+                    const customUrl = new URL(savedCustomBase);
+                    customUrl.searchParams.set('mode', 'mobile');
+                    customUrl.searchParams.set('room', currentRoomCode);
+                    return customUrl.toString();
+                } catch (e) {}
+            }
+            const baseUrl = `${window.location.origin}${window.location.pathname}`;
+            return `${baseUrl}?mode=mobile&room=${encodeURIComponent(currentRoomCode)}`;
+        }
+
+        function drawQrToElement(containerId, text, size) {
+            const el = document.getElementById(containerId);
+            if (!el || typeof window.QRCode !== 'function') return;
+            el.innerHTML = '';
+            new window.QRCode(el, {
+                text: text,
+                width: size,
+                height: size,
+                colorDark: '#0f172a',
+                colorLight: '#ffffff',
+                correctLevel: window.QRCode.CorrectLevel.M
+            });
+        }
+
+        function renderQrCodeAndRoomUI() {
+            const roomStageEl = document.getElementById('stage-room-code');
+            const roomMobileEl = document.getElementById('mobile-room-code');
+            const roomModalEl = document.getElementById('modal-room-label');
+            if (roomStageEl) roomStageEl.textContent = currentRoomCode;
+            if (roomMobileEl) roomMobileEl.textContent = currentRoomCode;
+            if (roomModalEl) roomModalEl.textContent = currentRoomCode;
+
+            const mobileUrl = buildMobileTargetUrl();
+            const hasCustomUrl = Boolean((localStorage.getItem(CUSTOM_PUBLIC_URL_KEY) || '').trim());
+            const isLocal = isLocalOrSandboxEnvironment() && !hasCustomUrl;
+
+            const urlHintEl = document.getElementById('qr-url-hint');
+            if (urlHintEl) {
+                urlHintEl.innerHTML = isLocal
+                    ? `<span style="color:#fcd34d;">⚠️ เปิดจากเครื่อง/พรีวิวอยู่ กด “ตั้งค่า QR” เพื่อวางลิงก์ https://</span>`
+                    : `<span>${escapeHtml(mobileUrl)}</span>`;
+            }
+
+            const modalUrlEl = document.getElementById('modal-full-mobile-url');
+            if (modalUrlEl) modalUrlEl.textContent = mobileUrl;
+
+            const warningBox = document.getElementById('qr-local-warning-box');
+            if (warningBox) {
+                warningBox.style.display = isLocal ? 'block' : 'none';
+            }
+
+            drawQrToElement('qrcode-canvas-container', mobileUrl, 148);
+            drawQrToElement('modal-qrcode-container', mobileUrl, 180);
+        }
+
+        window.toggleQrDockVisibility = function () {
+            const dock = document.getElementById('qr-panel-dock');
+            if (dock) {
+                dock.classList.toggle('hidden-dock');
+            }
+        };
+
+        window.randomizeRoomCode = function () {
+            currentRoomCode = generateRoomId();
+            localStorage.setItem(ROOM_STORAGE_KEY, currentRoomCode);
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set('room', currentRoomCode);
+            window.history.replaceState({}, '', nextUrl.toString());
+            renderQrCodeAndRoomUI();
+            initPeerConnection();
+            initOptionalFirebaseSync();
+            showSystemToast(`🎲 เปลี่ยนเป็นห้อง ${currentRoomCode}`, 'สแกน QR Code ใหม่เพื่อเชื่อมต่อห้องนี้');
+        };
+
+        window.switchToMobileView = function () {
+            const url = new URL(window.location.href);
+            url.searchParams.set('mode', 'mobile');
+            url.searchParams.set('room', currentRoomCode);
+            window.location.href = url.toString();
+        };
+
+        window.switchToStageView = function () {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('mode');
+            url.searchParams.set('room', currentRoomCode);
+            window.location.href = url.toString();
+        };
+
+        // ==========================================
+        // 2.5 หน้าต่างจัดการ QR Code & คัดลอกลิงก์มือถือ
+        // ==========================================
+        window.openQrManagerModal = function () {
+            const customInput = document.getElementById('custom-public-url-input');
+            if (customInput) {
+                customInput.value = localStorage.getItem(CUSTOM_PUBLIC_URL_KEY) || '';
+            }
+            const cfg = loadSavedFirebaseConfig() || {};
+            ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'appId'].forEach(field => {
+                const input = document.getElementById(`fb-${field}`);
+                if (input) input.value = cfg[field] || '';
+            });
+            renderQrCodeAndRoomUI();
+            document.getElementById('qr-manager-modal').classList.add('active');
+        };
+
+        window.closeQrManagerModal = function (event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('qr-manager-modal').classList.remove('active');
+        };
+
+        window.applyCustomPublicUrl = function () {
+            const input = document.getElementById('custom-public-url-input');
+            const val = input ? input.value.trim() : '';
+            if (!val) {
+                showSystemToast('⚠️ กรุณาวางลิงก์ https:// ก่อนกดอัปเดต', 'เช่น https://your-site.netlify.app');
+                return;
+            }
+            try {
+                const parsed = new URL(val);
+                if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Invalid protocol');
+                localStorage.setItem(CUSTOM_PUBLIC_URL_KEY, parsed.toString());
+                renderQrCodeAndRoomUI();
+                showSystemToast('✅ อัปเดต QR Code เรียบร้อยแล้ว', 'สแกนด้วยมือถือเพื่อเข้าห้อง ' + currentRoomCode);
+            } catch (e) {
+                showSystemToast('⚠️ รูปแบบ URL ไม่ถูกต้อง', 'กรุณาขึ้นต้นด้วย https:// หรือ http://');
+            }
+        };
+
+        window.resetCustomPublicUrl = function () {
+            localStorage.removeItem(CUSTOM_PUBLIC_URL_KEY);
+            const input = document.getElementById('custom-public-url-input');
+            if (input) input.value = '';
+            renderQrCodeAndRoomUI();
+            showSystemToast('🔄 รีเซ็ตลิงก์ QR Code เป็นค่าเริ่มต้นแล้ว', '');
+        };
+
+        window.copyMobileLinkToClipboard = function () {
+            const mobileUrl = buildMobileTargetUrl();
+            const tempTextarea = document.createElement('textarea');
+            tempTextarea.value = mobileUrl;
+            tempTextarea.style.position = 'fixed';
+            tempTextarea.style.left = '-9999px';
+            document.body.appendChild(tempTextarea);
+            tempTextarea.select();
+            try {
+                document.execCommand('copy');
+                showSystemToast('📋 คัดลอกลิงก์มือถือแล้ว!', mobileUrl);
+            } catch (e) {
+                showSystemToast('⚠️ ไม่สามารถคัดลอกอัตโนมัติได้', 'กรุณาคัดลอกลิงก์จากหน้าต่างนี้โดยตรง');
+            }
+            document.body.removeChild(tempTextarea);
+        };
+
+        window.saveFirebaseConfigFromModal = function () {
+            const cfg = {};
+            ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'appId'].forEach(field => {
+                const input = document.getElementById(`fb-${field}`);
+                cfg[field] = input ? input.value.trim() : '';
+            });
+            if (!cfg.apiKey || !cfg.databaseURL) {
+                showSystemToast('⚠️ กรุณากรอก apiKey และ databaseURL', 'สำหรับการใช้งาน Firebase Realtime Database');
+                return;
+            }
+            localStorage.setItem(FB_CONFIG_STORAGE_KEY, JSON.stringify(cfg));
+            initOptionalFirebaseSync();
+            showSystemToast('🔥 บันทึกค่า Firebase เสริมแล้ว', `เชื่อมต่อห้อง ${currentRoomCode}`);
+        };
+
+        window.clearFirebaseConfigFromModal = function () {
+            localStorage.removeItem(FB_CONFIG_STORAGE_KEY);
+            ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'appId'].forEach(field => {
+                const input = document.getElementById(`fb-${field}`);
+                if (input) input.value = '';
+            });
+            initOptionalFirebaseSync();
+            showSystemToast('🔄 ล้างค่า Firebase แล้ว', 'ใช้ระบบ PeerJS อัตโนมัติเป็นหลัก');
+        };
+
+        // ==========================================
+        // 3. ระบบเสียง Web Audio API
         // ==========================================
         let audioCtx = null;
         let isAudioPlaying = false;
@@ -838,21 +1970,14 @@
             }
         }
 
-        function toggleAudio() {
+        window.toggleAudio = function () {
             initAudioContext();
             isAudioPlaying = !isAudioPlaying;
 
-            const iconName = isAudioPlaying ? 'volume-2' : 'volume-x';
-            const mainIcon = document.getElementById('audio-icon');
-            const mobIcon = document.getElementById('mobile-audio-icon');
-            
-            if (mainIcon) {
-                mainIcon.setAttribute('data-lucide', iconName);
-            }
-            if (mobIcon) {
-                mobIcon.setAttribute('data-lucide', iconName);
-            }
-            lucide.createIcons();
+            const iconEl = document.getElementById('audio-icon-emoji');
+            const labelEl = document.getElementById('audio-label-text');
+            if (iconEl) iconEl.textContent = isAudioPlaying ? '🔊' : '🔇';
+            if (labelEl) labelEl.textContent = isAudioPlaying ? 'ปิดเสียง' : 'เปิดเสียง';
 
             if (isAudioPlaying) {
                 startAmbientWater();
@@ -860,9 +1985,8 @@
             } else {
                 stopAmbientAudio();
             }
-        }
+        };
 
-        // สร้างเสียงสายน้ำไหลเอื่อยๆ
         function startAmbientWater() {
             if (!audioCtx || waterNoiseNode) return;
             const bufferSize = 2 * audioCtx.sampleRate;
@@ -873,7 +1997,7 @@
                 const white = Math.random() * 2 - 1;
                 output[i] = (lastOut + (0.02 * white)) / 1.02;
                 lastOut = output[i];
-                output[i] *= 0.15;
+                output[i] *= 0.14;
             }
 
             const whiteNoise = audioCtx.createBufferSource();
@@ -882,10 +2006,10 @@
 
             const filter = audioCtx.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.value = 320;
+            filter.frequency.value = 310;
 
             const gainNode = audioCtx.createGain();
-            gainNode.gain.value = 0.25;
+            gainNode.gain.value = 0.24;
 
             whiteNoise.connect(filter);
             filter.connect(gainNode);
@@ -894,15 +2018,13 @@
             waterNoiseNode = { source: whiteNoise, gain: gainNode };
         }
 
-        // บรรเลงทำนองเพลงไทยเดิม (บันไดเสียงเพนทาโทนิก ระนาด/ขลุ่ยแผ่วเบา)
         function startThaiPentatonicMusic() {
             if (thaiMusicInterval) clearInterval(thaiMusicInterval);
-            // โน้ตทำนองคล้ายเพลงลอยกระทง (C5, D5, E5, G5, A5)
             const melodyNotes = [
-                392.00, 392.00, 440.00, 392.00, 523.25, 493.88, // วันเพ็ญเดือนสิบสอง
-                392.00, 392.00, 440.00, 392.00, 587.33, 523.25, // น้ำก็นองเต็มตลิ่ง
-                523.25, 659.25, 783.99, 659.25, 523.25, 493.88, 440.00, // เราทั้งหลายชายหญิง
-                698.46, 698.46, 659.25, 523.25, 587.33, 523.25  // สนุกกันจริงวันลอยกระทง
+                392.00, 392.00, 440.00, 392.00, 523.25, 493.88,
+                392.00, 392.00, 440.00, 392.00, 587.33, 523.25,
+                523.25, 659.25, 783.99, 659.25, 523.25, 493.88, 440.00,
+                698.46, 698.46, 659.25, 523.25, 587.33, 523.25
             ];
             let noteIdx = 0;
 
@@ -914,7 +2036,7 @@
             }, 680);
         }
 
-        function playSoftChime(freq, duration, volume = 0.08) {
+        function playSoftChime(freq, duration, volume = 0.09) {
             if (!audioCtx) return;
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
@@ -933,10 +2055,9 @@
 
         function playSplashSound() {
             if (!audioCtx) initAudioContext();
-            // เสียงระฆังแก้ว + เสียงน้ำกระเพื่อมตอนปล่อยกระทง
-            playSoftChime(523.25, 0.9, 0.12);
-            setTimeout(() => playSoftChime(659.25, 1.0, 0.1), 120);
-            setTimeout(() => playSoftChime(783.99, 1.2, 0.09), 240);
+            playSoftChime(523.25, 0.9, 0.13);
+            setTimeout(() => playSoftChime(659.25, 1.0, 0.11), 120);
+            setTimeout(() => playSoftChime(783.99, 1.25, 0.09), 240);
         }
 
         function playFireworkSound() {
@@ -968,7 +2089,27 @@
         }
 
         // ==========================================
-        // 4. ระบบ Canvas วาดท้องฟ้า ดวงดาว โคมลอย พลุ และคลื่นน้ำ
+        // 4. ระบบขยายเต็มจอ (Fullscreen)
+        // ==========================================
+        window.toggleFullscreen = function () {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().catch(() => {});
+                }
+            }
+        };
+
+        document.addEventListener('fullscreenchange', () => {
+            const labelEl = document.getElementById('fullscreen-label-text');
+            if (labelEl) {
+                labelEl.textContent = document.fullscreenElement ? 'ออกเต็มจอ' : 'เต็มจอ';
+            }
+        });
+
+        // ==========================================
+        // 5. ระบบ Canvas วาดท้องฟ้า ดวงดาว โคมลอย พลุ และคลื่นน้ำ
         // ==========================================
         const canvas = document.getElementById('scene-canvas');
         const ctx = canvas.getContext('2d');
@@ -991,7 +2132,7 @@
 
         function initStars() {
             stars = [];
-            const starCount = Math.floor((width * height) / 9000);
+            const starCount = Math.floor((width * height) / 8500);
             for (let i = 0; i < starCount; i++) {
                 stars.push({
                     x: Math.random() * width,
@@ -1005,7 +2146,7 @@
 
         function initLanterns() {
             lanterns = [];
-            const count = width < 640 ? 8 : 16;
+            const count = width < 640 ? 9 : 18;
             for (let i = 0; i < count; i++) {
                 lanterns.push(createLantern(true));
             }
@@ -1023,7 +2164,7 @@
             };
         }
 
-        function launchRandomFirework(withSound = false) {
+        window.launchRandomFirework = function (withSound = false) {
             const startX = Math.random() * (width * 0.8) + (width * 0.1);
             const targetY = Math.random() * (height * 0.28) + (height * 0.08);
             const colors = ['#facc15', '#f472b6', '#38bdf8', '#a78bfa', '#fb923c', '#4ade80'];
@@ -1037,14 +2178,14 @@
                 color: color,
                 withSound: withSound
             });
-        }
+        };
 
         function explodeFirework(x, y, color, withSound) {
             if (withSound) playFireworkSound();
-            const count = 42;
+            const count = 44;
             for (let i = 0; i < count; i++) {
                 const angle = (Math.PI * 2 / count) * i;
-                const speed = Math.random() * 3.2 + 1.2;
+                const speed = Math.random() * 3.3 + 1.2;
                 particles.push({
                     x: x,
                     y: y,
@@ -1061,9 +2202,9 @@
             waterRipples.push({
                 x: x,
                 y: y,
-                rx: 10,
-                ry: 3,
-                alpha: 0.85
+                rx: 12,
+                ry: 3.5,
+                alpha: 0.9
             });
         }
 
@@ -1072,7 +2213,7 @@
 
             const horizonY = height * 0.54;
 
-            // 1. ท้องฟ้ายามค่ำคืน (Gradient)
+            // 1. ท้องฟ้ายามค่ำคืน
             const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
             skyGrad.addColorStop(0, '#040814');
             skyGrad.addColorStop(0.55, '#0b1736');
@@ -1080,7 +2221,7 @@
             ctx.fillStyle = skyGrad;
             ctx.fillRect(0, 0, width, horizonY);
 
-            // 2. ดวงดาวระยิบระยับ
+            // 2. ดวงดาว
             stars.forEach(s => {
                 s.alpha += s.speed;
                 const opacity = (Math.sin(s.alpha) + 1) * 0.4 + 0.15;
@@ -1090,7 +2231,7 @@
                 ctx.fill();
             });
 
-            // 3. โคมลอยบนท้องฟ้า
+            // 3. โคมลอย
             lanterns.forEach((l, idx) => {
                 l.y += l.vy;
                 l.wobble += 0.02;
@@ -1104,7 +2245,6 @@
                 ctx.translate(l.x, l.y);
                 ctx.scale(l.scale, l.scale);
                 
-                // แสงเรืองรองของโคม
                 const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 22);
                 glow.addColorStop(0, 'rgba(254, 240, 138, 0.9)');
                 glow.addColorStop(0.4, 'rgba(251, 146, 60, 0.45)');
@@ -1114,7 +2254,6 @@
                 ctx.arc(0, 0, 22, 0, Math.PI * 2);
                 ctx.fill();
 
-                // ตัวโคม
                 ctx.fillStyle = '#fdba74';
                 ctx.beginPath();
                 ctx.moveTo(-7, -10);
@@ -1147,7 +2286,7 @@
                 const p = particles[i];
                 p.x += p.vx;
                 p.y += p.vy;
-                p.vy += 0.045; // แรงโน้มถ่วง
+                p.vy += 0.045;
                 p.alpha -= p.decay;
 
                 if (p.alpha <= 0) {
@@ -1164,7 +2303,7 @@
                 ctx.restore();
             }
 
-            // 5. ผืนน้ำแม่น้ำเจ้าพระยา (Gradient)
+            // 5. ผืนน้ำแม่น้ำเจ้าพระยา
             const waterGrad = ctx.createLinearGradient(0, horizonY, 0, height);
             waterGrad.addColorStop(0, '#09152e');
             waterGrad.addColorStop(0.35, '#071024');
@@ -1172,14 +2311,14 @@
             ctx.fillStyle = waterGrad;
             ctx.fillRect(0, horizonY, width, height - horizonY);
 
-            // 6. แสงสะท้อนพระจันทร์บนผิวน้ำ (Animated Moon Reflection)
+            // 6. แสงสะท้อนพระจันทร์บนผิวน้ำ
             waveOffset += 0.035;
-            const moonCenterX = width < 640 ? width - 80 : (width < 768 ? width - 150 : width - 210);
+            const moonCenterX = width < 640 ? width - 65 : width - 125;
             for (let y = horizonY + 8; y < height; y += 7) {
                 const progress = (y - horizonY) / (height - horizonY);
                 const shimmerWidth = (25 + progress * 95) * (0.8 + 0.2 * Math.sin(y * 0.1 + waveOffset * 2));
                 const shiftX = Math.sin(y * 0.08 + waveOffset) * (6 + progress * 14);
-                const alpha = (1 - progress * 0.75) * 0.22;
+                const alpha = (1 - progress * 0.75) * 0.24;
 
                 ctx.fillStyle = `rgba(254, 240, 138, ${alpha})`;
                 ctx.beginPath();
@@ -1187,7 +2326,7 @@
                 ctx.fill();
             }
 
-            // 7. ระลอกคลื่นน้ำพริ้วไหวทั่วแม่น้ำ
+            // 7. ระลอกคลื่นน้ำพริ้วไหว
             ctx.strokeStyle = 'rgba(148, 163, 184, 0.08)';
             ctx.lineWidth = 1.2;
             for (let row = 0; row < 14; row++) {
@@ -1214,7 +2353,7 @@
                 }
 
                 ctx.strokeStyle = `rgba(253, 224, 71, ${r.alpha})`;
-                ctx.lineWidth = 1.5;
+                ctx.lineWidth = 1.6;
                 ctx.beginPath();
                 ctx.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
                 ctx.stroke();
@@ -1224,69 +2363,58 @@
         }
 
         // ==========================================
-        // 5. ระบบจัดการกระทงในแม่น้ำ (ลอยตามกระแสน้ำ + Perspective)
+        // 6. ระบบจัดการกระทงในแม่น้ำ & ปุ่มล้างกระทงทั้งหมด
         // ==========================================
         const riverLayer = document.getElementById('krathong-river-layer');
 
-        function spawnKrathongOnRiver(data, isUserNew = false) {
+        function spawnKrathongOnRiver(data, isUserNew = false, msgId = null) {
             const uid = krathongIdCounter++;
             const krathongObj = KRATHONG_TYPES.find(k => k.id === data.type) || KRATHONG_TYPES[0];
             
-            // กำหนดความลึกในแม่น้ำ (depth: 0.15 = ไกลฝั่งตรงข้าม, 0.85 = ใกล้ตลิ่งด้านหน้า)
             const depth = isUserNew ? (Math.random() * 0.35 + 0.45) : (Math.random() * 0.72 + 0.14);
-            const scale = 0.55 + depth * 0.65; // ยิ่งใกล้ยิ่งใหญ่ (Perspective)
-            const speed = (0.28 + depth * 0.45) * (Math.random() * 0.2 + 0.9); // ยิ่งใกล้ยิ่งลอยเร็วกว่า
+            const scale = 0.58 + depth * 0.65;
+            const speed = (0.28 + depth * 0.45) * (Math.random() * 0.2 + 0.9);
 
-            // ตำแหน่งเริ่มต้นในแนวแกน X
             const startX = isUserNew 
-                ? (window.innerWidth * 0.25 + Math.random() * (window.innerWidth * 0.3)) 
+                ? (window.innerWidth * 0.32 + Math.random() * (window.innerWidth * 0.36)) 
                 : (Math.random() * window.innerWidth);
 
             const el = document.createElement('div');
-            el.className = 'absolute flex flex-col items-center cursor-pointer group transition-transform';
+            el.className = 'river-krathong';
             el.style.left = `${startX}px`;
             el.style.top = `${depth * 76}%`;
             el.style.zIndex = Math.floor(depth * 100);
             el.style.transform = `translate(-50%, -50%) scale(${scale})`;
 
-            // ป้ายชื่อและคำอธิษฐานเหนือกระทง
-            const highlightClass = isUserNew 
-                ? 'border-amber-400 bg-slate-900/90 shadow-[0_0_15px_rgba(250,204,21,0.45)]' 
-                : 'border-white/15 bg-slate-950/75 group-hover:border-amber-400/70';
-
             el.innerHTML = `
-                <div class="wish-tag mb-1 px-3 py-1 rounded-2xl backdrop-blur-md border ${highlightClass} text-center max-w-[170px] sm:max-w-[200px] shadow-lg transition-all">
-                    <div class="text-[11px] sm:text-xs font-bold text-amber-300 truncate flex items-center justify-center gap-1">
-                        ${isUserNew ? '<span>✨</span>' : ''}
-                        <span>${escapeHtml(data.name)}</span>
+                <div class="wish-tag river-tag ${isUserNew ? 'highlight' : ''}">
+                    <div class="river-tag-name">
+                        ${isUserNew ? '✨ ' : ''}${escapeHtml(data.name)}
                     </div>
-                    <div class="text-[10px] text-slate-200 truncate">${escapeHtml(data.wish)}</div>
+                    <div class="river-tag-wish">${escapeHtml(data.wish)}</div>
                 </div>
-                <div class="w-24 h-24 sm:w-28 sm:h-28 krathong-bob" style="animation-delay: -${(Math.random() * 3).toFixed(2)}s">
+                <div class="river-krathong-art krathong-bob" style="animation-delay: -${(Math.random() * 3).toFixed(2)}s">
                     ${krathongObj.getSvg(uid)}
                 </div>
             `;
 
-            // เมื่อคลิกที่กระทง ให้เปิดดูคำอธิษฐานแบบเต็ม
             el.addEventListener('click', () => {
                 openWishDetailModal(data, krathongObj, uid);
             });
 
             riverLayer.appendChild(el);
 
-            const item = {
+            floatingKrathongs.push({
                 id: uid,
+                msgId: msgId,
                 el: el,
                 x: startX,
                 depth: depth,
                 scale: scale,
                 speed: speed,
                 data: data
-            };
+            });
 
-            floatingKrathongs.push(item);
-
-            // ถ้าเป็นกระทงที่ผู้ใช้เพิ่งปล่อย ให้สร้างวงคลื่นน้ำตรงตำแหน่งที่ลงน้ำ
             if (isUserNew) {
                 const riverRect = riverLayer.getBoundingClientRect();
                 const rippleY = riverRect.top + (depth * 0.76 * riverRect.height) + 35;
@@ -1295,349 +2423,272 @@
             }
         }
 
-        // ลูปเคลื่อนที่กระทงให้ลอยละล่องไปตามกระแสน้ำ (ซ้ายไปขวา)
         function updateKrathongsLoop() {
-            const maxW = window.innerWidth + 140;
-            for (let i = 0; i < floatingKrathongs.length; i++) {
-                const k = floatingKrathongs[i];
-                k.x += k.speed;
-                if (k.x > maxW) {
-                    k.x = -140;
+            const screenW = window.innerWidth;
+            floatingKrathongs.forEach(item => {
+                item.x += item.speed;
+                if (item.x > screenW + 140) {
+                    item.x = -140;
                 }
-                k.el.style.left = `${k.x}px`;
-            }
+                item.el.style.left = `${item.x}px`;
+            });
             requestAnimationFrame(updateKrathongsLoop);
         }
 
+        window.openClearConfirmModal = function () {
+            document.getElementById('clear-confirm-modal').classList.add('active');
+        };
+
+        window.closeClearConfirmModal = function (event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('clear-confirm-modal').classList.remove('active');
+        };
+
+        function applyClearAllLocalOnly() {
+            riverLayer.innerHTML = '';
+            floatingKrathongs = [];
+            savedKrathongRecords = [];
+            seenMessageIds.clear();
+            persistKrathongs();
+        }
+
+        window.confirmClearAllKrathongs = function () {
+            applyClearAllLocalOnly();
+            if (activeDb) {
+                remove(ref(activeDb, `rooms/${currentRoomCode}/krathongs`)).catch(() => {});
+            }
+            if (localBroadcastChannel) {
+                localBroadcastChannel.postMessage({ type: 'CLEAR_ALL', room: currentRoomCode });
+            }
+            window.closeClearConfirmModal();
+            showSystemToast('🗑️ ล้างกระทงทั้งหมดเรียบร้อยแล้ว', `เคลียร์กระทงในห้อง ${currentRoomCode} แล้ว`);
+        };
+
         // ==========================================
-        // 6. ระบบหน้าจอสร้างกระทง (Mobile UI) & การส่งข้อมูลข้ามแท็บ
+        // 7. หน้าต่างสร้างกระทง (Creator Modal & Mobile View)
         // ==========================================
+        window.openCreatorModal = function () {
+            updateLivePreview();
+            document.getElementById('creator-modal').classList.add('active');
+        };
+
+        window.closeCreatorModal = function (event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('creator-modal').classList.remove('active');
+        };
+
         function initKrathongSelector() {
-            const grid = document.getElementById('krathong-selector-grid');
-            grid.innerHTML = '';
+            const grids = [
+                document.getElementById('krathong-selector-grid'),
+                document.getElementById('mobile-krathong-selector-grid')
+            ].filter(Boolean);
 
-            KRATHONG_TYPES.forEach((k, index) => {
-                const isSelected = k.id === selectedKrathongId;
-                const card = document.createElement('button');
-                card.type = 'button';
-                card.id = `k-card-${k.id}`;
-                card.className = `glass-card rounded-2xl p-2 flex flex-col items-center justify-between text-center relative ${isSelected ? 'selected' : ''}`;
-                card.onclick = () => selectKrathongType(k.id);
+            grids.forEach((grid, gIdx) => {
+                grid.innerHTML = '';
+                KRATHONG_TYPES.forEach((k, index) => {
+                    const isSelected = k.id === selectedKrathongId;
+                    const card = document.createElement('button');
+                    card.type = 'button';
+                    card.setAttribute('data-k-id', k.id);
+                    card.className = `k-option ${isSelected ? 'selected' : ''}`;
+                    card.onclick = () => window.selectKrathongType(k.id);
 
-                card.innerHTML = `
-                    <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-medium mb-1">
-                        ${k.badge}
-                    </span>
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 my-0.5 pointer-events-none">
-                        ${k.getSvg('sel_' + index)}
-                    </div>
-                    <span class="text-[11px] font-medium text-slate-200 leading-tight line-clamp-1 mt-1">
-                        ${k.shortName}
-                    </span>
-                `;
-                grid.appendChild(card);
+                    card.innerHTML = `
+                        <span class="k-option-badge">${k.badge}</span>
+                        <div class="k-option-svg" style="pointer-events:none;">
+                            ${k.getSvg(`sel_${gIdx}_${index}`)}
+                        </div>
+                        <span class="k-option-name">${k.shortName}</span>
+                    `;
+                    grid.appendChild(card);
+                });
             });
 
             updateLivePreview();
         }
 
-        function selectKrathongType(id) {
+        window.selectKrathongType = function (id) {
             selectedKrathongId = id;
-            KRATHONG_TYPES.forEach(k => {
-                const el = document.getElementById(`k-card-${k.id}`);
-                if (el) {
-                    if (k.id === id) el.classList.add('selected');
-                    else el.classList.remove('selected');
-                }
+            document.querySelectorAll('.k-option[data-k-id]').forEach(el => {
+                if (el.getAttribute('data-k-id') === id) el.classList.add('selected');
+                else el.classList.remove('selected');
             });
             updateLivePreview();
-        }
+        };
 
-        function selectPresetWish(text) {
-            const input = document.getElementById('input-user-wish');
-            input.value = text;
+        window.selectPresetWish = function (text) {
+            const activeWishInput = isMobileMode
+                ? document.getElementById('mobile-input-user-wish')
+                : document.getElementById('input-user-wish');
+            if (activeWishInput) {
+                activeWishInput.value = text;
+            }
             updateLivePreview();
-        }
+        };
 
-        function updateLivePreview() {
-            const nameVal = document.getElementById('input-user-name').value.trim();
-            const wishVal = document.getElementById('input-user-wish').value.trim();
+        window.updateLivePreview = function () {
+            const nameInput = isMobileMode
+                ? document.getElementById('mobile-input-user-name')
+                : document.getElementById('input-user-name');
+            const wishInput = isMobileMode
+                ? document.getElementById('mobile-input-user-wish')
+                : document.getElementById('input-user-wish');
+
+            const nameVal = (nameInput ? nameInput.value : '').trim();
+            const wishVal = (wishInput ? wishInput.value : '').trim();
             const krathongObj = KRATHONG_TYPES.find(k => k.id === selectedKrathongId) || KRATHONG_TYPES[0];
 
-            document.getElementById('preview-krathong-svg').innerHTML = krathongObj.getSvg('live_preview');
-            document.getElementById('preview-name-text').textContent = nameVal || 'ผู้ร่วมสืบสานประเพณี';
-            document.getElementById('preview-wish-text').textContent = wishVal || 'ขอขมาพระแม่คงคา และขอให้มีความสุขความเจริญ';
-        }
+            const svgTargetId = isMobileMode ? 'mobile-preview-krathong-svg' : 'preview-krathong-svg';
+            const nameTargetId = isMobileMode ? 'mobile-preview-name-text' : 'preview-name-text';
+            const wishTargetId = isMobileMode ? 'mobile-preview-wish-text' : 'preview-wish-text';
 
-        // เมื่อกดปุ่ม "ลอยกระทงลงสู่แม่น้ำ"
-        async function submitKrathong() {
-            const nameInput = document.getElementById('input-user-name');
-            const wishInput = document.getElementById('input-user-wish');
+            const svgEl = document.getElementById(svgTargetId);
+            const nameEl = document.getElementById(nameTargetId);
+            const wishEl = document.getElementById(wishTargetId);
 
-            const userName = nameInput.value.trim() || 'ผู้ไม่ประสงค์ออกนาม';
-            const userWish = wishInput.value.trim() || 'ขอขมาพระแม่คงคา ขอให้ชีวิตราบรื่นมีความสุข';
+            if (svgEl) svgEl.innerHTML = krathongObj.getSvg(isMobileMode ? 'mob_preview' : 'live_preview');
+            if (nameEl) nameEl.textContent = nameVal || 'ผู้ร่วมสืบสานประเพณี';
+            if (wishEl) wishEl.textContent = wishVal || 'ขอขมาพระแม่คงคา ขอให้ชีวิตราบรื่นมีความสุข';
+        };
 
-            const payload = {
+        window.hideMobileSuccessBanner = function () {
+            const banner = document.getElementById('mobile-success-banner');
+            if (banner) banner.style.display = 'none';
+        };
+
+        window.submitKrathong = function (fromMobile = false) {
+            const nameInput = fromMobile
+                ? document.getElementById('mobile-input-user-name')
+                : document.getElementById('input-user-name');
+            const wishInput = fromMobile
+                ? document.getElementById('mobile-input-user-wish')
+                : document.getElementById('input-user-wish');
+
+            const userName = (nameInput && nameInput.value.trim()) || 'ผู้ไม่ประสงค์ออกนาม';
+            const userWish = (wishInput && wishInput.value.trim()) || 'ขอขมาพระแม่คงคา ขอให้ชีวิตราบรื่นมีความสุข';
+            const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+            const newItem = {
+                msgId: msgId,
                 name: userName,
                 wish: userWish,
                 type: selectedKrathongId,
-                room: CURRENT_ROOM_CODE,
-                timestamp: Date.now()
+                room: currentRoomCode,
+                timestamp: Date.now(),
+                isNew: true
             };
 
-            // เล่นแอนิเมชันส่งกระทงลอยขึ้นในหน้าตัวอย่าง
-            const previewWrapper = document.getElementById('preview-krathong-wrapper');
-            previewWrapper.classList.add('launching-krathong');
-            playSplashSound();
+            seenMessageIds.add(msgId);
 
-            // ส่งข้อมูลไปยังหน้าจอแม่น้ำหลัก (ทั้งข้ามอุปกรณ์ผ่าน Cloud Sync และข้ามแท็บในเครื่อง)
-            broadcastNewKrathong(payload);
-            if (window.FirebaseSyncBridge) {
-                window.FirebaseSyncBridge.sendKrathong(CURRENT_ROOM_CODE, payload);
-            }
-
-            setTimeout(() => {
-                previewWrapper.classList.remove('launching-krathong');
-                
-                // หากเปิดจากหน้าจอหลัก ให้สลับกลับไปดูแม่น้ำทันทีเพื่อเห็นกระทงของตัวเองลอยลงน้ำ
-                if (!isMobileOnlyMode) {
-                    closeMobileCreator();
-                } else {
-                    // หากสแกนจากมือถือจริง (?mode=mobile) ให้แสดงกล่องยืนยันชัดเจนบนมือถือ
-                    showMobileSuccessToast(userName);
-                }
-
-                // รีเซ็ตช่องกรอกคำอธิษฐานเล็กน้อยเผื่อลอยใบต่อไป
-                wishInput.value = '';
-                updateLivePreview();
-            }, 950);
-        }
-
-        function showMobileSuccessToast(name) {
-            const banner = document.getElementById('mobile-sent-banner');
-            const bannerTitle = document.getElementById('mobile-sent-title');
-            if (banner && bannerTitle) {
-                bannerTitle.textContent = `ส่งกระทงของ "${name}" ขึ้นหน้าจอแม่น้ำสำเร็จแล้ว!`;
-                banner.classList.remove('hidden');
-            }
-
-            const btn = document.getElementById('release-krathong-btn');
-            const originalHtml = btn.innerHTML;
-            btn.innerHTML = `<span class="text-xl">✅</span><span>ส่งกระทงขึ้นหน้าจอแล้ว! (ลอยอีกใบได้)</span>`;
-            btn.classList.replace('from-amber-500', 'from-emerald-500');
-            btn.classList.replace('to-orange-500', 'to-teal-500');
-
-            setTimeout(() => {
-                btn.innerHTML = originalHtml;
-                btn.classList.replace('from-emerald-500', 'from-amber-500');
-                btn.classList.replace('to-teal-500', 'to-orange-500');
-            }, 3000);
-        }
-
-        // ==========================================
-        // 7. การซิงค์ข้อมูลแบบ Real-time (Cloud Sync + BroadcastChannel + localStorage)
-        // ==========================================
-        const krathongChannel = ('BroadcastChannel' in window) ? new BroadcastChannel(`loy_krathong_room_${CURRENT_ROOM_CODE}`) : null;
-        const processedTimestamps = new Set();
-
-        function broadcastNewKrathong(payload) {
-            // 1. แสดงบนหน้าจอปัจจุบันทันที
-            handleIncomingKrathong(payload);
-
-            // 2. ส่งข้ามแท็บ/หน้าต่างบนเบราว์เซอร์เดียวกัน
-            if (krathongChannel) {
-                krathongChannel.postMessage({ type: 'NEW_KRATHONG', payload });
-            }
-            try {
-                localStorage.setItem(`loy_krathong_latest_${CURRENT_ROOM_CODE}`, JSON.stringify(payload));
-            } catch (e) {}
-        }
-
-        if (krathongChannel) {
-            krathongChannel.onmessage = (event) => {
-                if (event.data && event.data.type === 'NEW_KRATHONG') {
-                    handleIncomingKrathong(event.data.payload);
-                }
-            };
-        }
-
-        window.addEventListener('storage', (e) => {
-            if (e.key === `loy_krathong_latest_${CURRENT_ROOM_CODE}` && e.newValue) {
+            // 1. ส่งผ่าน PeerJS (WebRTC) ไปยังหน้าจอหลักโดยตรง (ข้ามอุปกรณ์จริง)
+            if (fromMobile && hostDataConnection && hostDataConnection.open) {
                 try {
-                    const payload = JSON.parse(e.newValue);
-                    handleIncomingKrathong(payload);
-                } catch (err) {}
+                    hostDataConnection.send({
+                        type: 'NEW_KRATHONG',
+                        room: currentRoomCode,
+                        msgId: msgId,
+                        item: newItem
+                    });
+                } catch (e) {}
+            } else if (fromMobile && peerInstance && !hostDataConnection) {
+                // พยายามเชื่อมต่ออีกครั้งหากหลุดก่อนส่ง
+                connectMobileToHost(getHostPeerId(currentRoomCode));
+                setTimeout(() => {
+                    if (hostDataConnection && hostDataConnection.open) {
+                        try {
+                            hostDataConnection.send({
+                                type: 'NEW_KRATHONG',
+                                room: currentRoomCode,
+                                msgId: msgId,
+                                item: newItem
+                            });
+                        } catch (e) {}
+                    }
+                }, 900);
             }
-        });
 
-        function handleIncomingKrathong(payload) {
-            if (!payload) return;
-            const dedupeKey = `${payload.name}_${payload.timestamp}`;
-            if (processedTimestamps.has(dedupeKey)) return;
-            processedTimestamps.add(dedupeKey);
+            // 2. ส่งผ่าน Firebase เสริม (ถ้ามีการตั้งค่าไว้)
+            if (activeDb) {
+                const roomListRef = ref(activeDb, `rooms/${currentRoomCode}/krathongs`);
+                const pushedRef = push(roomListRef);
+                set(pushedRef, newItem).catch(() => {});
+            }
 
-            spawnKrathongOnRiver(payload, true);
-            totalKrathongsCount++;
-            document.getElementById('total-krathong-count').textContent = totalKrathongsCount.toLocaleString();
-            showRiverToast(payload);
-            launchRandomFirework(false);
-        }
+            // 3. ส่งผ่าน BroadcastChannel & LocalStorage สำรอง (สำหรับทดสอบในเครื่องเดียวกัน)
+            if (localBroadcastChannel) {
+                localBroadcastChannel.postMessage({
+                    type: 'NEW_KRATHONG',
+                    room: currentRoomCode,
+                    msgId: msgId,
+                    item: newItem
+                });
+            }
 
-        function showRiverToast(payload) {
+            savedKrathongRecords.push(newItem);
+            persistKrathongs();
+
+            if (!fromMobile) {
+                spawnKrathongOnRiver(newItem, true, msgId);
+                playSplashSound();
+                launchRandomFirework(true);
+                setTimeout(() => launchRandomFirework(false), 450);
+                window.closeCreatorModal();
+                showSystemToast(`🪷 ${userName} ลอยกระทงแล้ว!`, `“${userWish}”`);
+            } else {
+                const banner = document.getElementById('mobile-success-banner');
+                const summary = document.getElementById('mobile-sent-summary');
+                if (summary) {
+                    summary.textContent = `ส่งกระทงของ "${userName}" ไปยังห้อง ${currentRoomCode} เรียบร้อยแล้ว`;
+                }
+                if (banner) {
+                    banner.style.display = 'block';
+                    banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+
+            if (nameInput) nameInput.value = '';
+            if (wishInput) wishInput.value = '';
+            updateLivePreview();
+        };
+
+        function showSystemToast(title, subtitle) {
             const container = document.getElementById('live-toast-container');
+            if (!container) return;
             const toast = document.createElement('div');
-            toast.className = 'glass-panel px-4 py-2.5 rounded-2xl border border-amber-400/40 shadow-xl flex items-center gap-3 transform transition-all duration-500 translate-x-0 opacity-100';
+            toast.className = 'glass-panel toast-item';
             toast.innerHTML = `
-                <span class="text-2xl">🪷</span>
-                <div class="min-w-0">
-                    <div class="text-xs font-bold text-amber-300 truncate">${escapeHtml(payload.name)} ลอยกระทงแล้ว!</div>
-                    <div class="text-[11px] text-slate-200 truncate">“${escapeHtml(payload.wish)}”</div>
+                <span style="font-size: 1.5rem;">✨</span>
+                <div style="min-width: 0;">
+                    <div style="font-size: 0.85rem; font-weight: 700; color: #fcd34d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(title)}</div>
+                    <div style="font-size: 0.75rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(subtitle)}</div>
                 </div>
             `;
             container.appendChild(toast);
 
             setTimeout(() => {
                 toast.style.opacity = '0';
-                toast.style.transform = 'translateX(-20px)';
-                setTimeout(() => toast.remove(), 500);
-            }, 4500);
+                toast.style.transform = 'translateX(20px)';
+                setTimeout(() => toast.remove(), 450);
+            }, 4200);
         }
 
         // ==========================================
-        // 8. การจัดการ Modal (QR Code, Mobile Creator, Wish Detail)
+        // 8. หน้าต่างอ่านคำอธิษฐานเมื่อคลิกกระทงในน้ำ
         // ==========================================
-        function isRestrictedLocalEnvironment() {
-            const protocol = window.location.protocol;
-            const hostname = window.location.hostname;
-            return (
-                protocol === 'file:' ||
-                protocol === 'blob:' ||
-                protocol === 'about:' ||
-                hostname === 'localhost' ||
-                hostname === '127.0.0.1' ||
-                hostname === '' ||
-                window.location.href.startsWith('data:')
-            );
-        }
-
-        function getMobileUrl() {
-            let baseUrlStr = customBaseUrl.trim();
-            try {
-                const url = baseUrlStr ? new URL(baseUrlStr) : new URL(window.location.href);
-                url.searchParams.set('mode', 'mobile');
-                url.searchParams.set('room', CURRENT_ROOM_CODE);
-                return url.toString();
-            } catch (e) {
-                // กรณีผู้ใช้พิมพ์ URL ยังไม่สมบูรณ์
-                return `${baseUrlStr}?mode=mobile&room=${CURRENT_ROOM_CODE}`;
-            }
-        }
-
-        function renderQrCodeCanvas() {
-            const container = document.getElementById('qrcode-container');
-            const targetUrl = getMobileUrl();
-            const urlDisplay = document.getElementById('qr-target-url-display');
-            if (urlDisplay) urlDisplay.textContent = targetUrl;
-
-            container.innerHTML = '';
-            try {
-                new QRCode(container, {
-                    text: targetUrl,
-                    width: 200,
-                    height: 200,
-                    colorDark: '#020617',
-                    colorLight: '#ffffff',
-                    correctLevel: QRCode.CorrectLevel.M
-                });
-            } catch (e) {
-                container.innerHTML = '<div class="text-slate-800 text-xs p-4">กรุณาระบุ URL ที่ถูกต้องเพื่อสร้าง QR Code</div>';
-            }
-        }
-
-        function handleCustomUrlChange(val) {
-            customBaseUrl = val;
-            renderQrCodeCanvas();
-        }
-
-        function resetCustomUrl() {
-            customBaseUrl = '';
-            const input = document.getElementById('custom-base-url-input');
-            if (input) input.value = '';
-            renderQrCodeCanvas();
-        }
-
-        function openQrModal() {
-            const modal = document.getElementById('qr-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-
-            // ตรวจสอบว่ารันบน localhost / file:// / sandbox หรือไม่
-            const warningBox = document.getElementById('local-url-warning');
-            if (warningBox) {
-                if (isRestrictedLocalEnvironment()) {
-                    warningBox.classList.remove('hidden');
-                } else {
-                    warningBox.classList.add('hidden');
-                }
-            }
-
-            renderQrCodeCanvas();
-            lucide.createIcons();
-        }
-
-        function closeQrModal() {
-            const modal = document.getElementById('qr-modal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
-
-        function copyMobileLink() {
-            const link = getMobileUrl();
-            const tempInput = document.createElement('input');
-            tempInput.value = link;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
-
-            const label = document.getElementById('copy-link-text');
-            label.textContent = 'คัดลอกลิงก์สำหรับมือถือเรียบร้อยแล้ว!';
-            setTimeout(() => {
-                label.textContent = 'คัดลอกลิงก์สำหรับมือถือ (Copy Link)';
-            }, 2500);
-        }
-
-        function openMobileCreator(fromQrModal = false) {
-            if (fromQrModal) closeQrModal();
-            const creator = document.getElementById('mobile-creator-view');
-            creator.classList.remove('hidden');
-            creator.classList.add('flex');
-            updateLivePreview();
-        }
-
-        function closeMobileCreator() {
-            const creator = document.getElementById('mobile-creator-view');
-            creator.classList.add('hidden');
-            creator.classList.remove('flex');
-            isMobileOnlyMode = false;
-        }
-
         function openWishDetailModal(data, krathongObj, uid) {
             const modal = document.getElementById('wish-detail-modal');
             document.getElementById('modal-krathong-art').innerHTML = krathongObj.getSvg('modal_' + uid);
             document.getElementById('modal-krathong-type').textContent = krathongObj.name;
             document.getElementById('modal-sender-name').textContent = data.name;
             document.getElementById('modal-wish-content').textContent = data.wish;
-
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            modal.classList.add('active');
         }
 
-        function closeWishDetailModal() {
+        window.closeWishDetailModal = function (event) {
+            if (event && event.target !== event.currentTarget) return;
             const modal = document.getElementById('wish-detail-modal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
+            modal.classList.remove('active');
+        };
 
         function escapeHtml(str) {
             const div = document.createElement('div');
@@ -1646,36 +2697,31 @@
         }
 
         // ==========================================
-        // 9. เริ่มต้นการทำงานเมื่อโหลดหน้าเว็บ (Initialization)
+        // 9. เริ่มต้นการทำงานเมื่อโหลดหน้าเว็บ
         // ==========================================
         window.onload = function () {
-            lucide.createIcons();
+            initKrathongSelector();
+            renderQrCodeAndRoomUI();
+            loadSavedKrathongs();
+            initPeerConnection();
+            initOptionalFirebaseSync();
 
-            // แสดงรหัสห้อง 4 หลักบนทุกจุดของหน้าจอ
-            ['header-room-code', 'modal-room-code', 'mobile-room-code'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.textContent = CURRENT_ROOM_CODE;
-            });
-
-            // เริ่มระบบซิงก์ข้ามอุปกรณ์แบบ Real-time
-            if (window.FirebaseSyncBridge) {
-                window.FirebaseSyncBridge.init(CURRENT_ROOM_CODE, (remotePayload) => {
-                    handleIncomingKrathong(remotePayload);
-                });
+            if (isMobileMode) {
+                document.getElementById('river-view').style.display = 'none';
+                document.getElementById('mobile-view').style.display = 'block';
+                updateLivePreview();
+                return;
             }
 
             initStars();
             initLanterns();
-            initKrathongSelector();
-
-            // ปล่อยกระทงตัวอย่างเริ่มต้นลงแม่น้ำ
-            SAMPLE_WISHES.forEach((sample, idx) => {
+            updateCounterUI();
+            savedKrathongRecords.forEach((item, idx) => {
                 setTimeout(() => {
-                    spawnKrathongOnRiver(sample, false);
-                }, idx * 250);
+                    spawnKrathongOnRiver(item, Boolean(item.isNew), item.msgId || null);
+                }, idx * 140);
             });
 
-            // เริ่มแอนิเมชันฉากและกระทง
             renderScene();
             updateKrathongsLoop();
 
@@ -1685,13 +2731,6 @@
                     launchRandomFirework(false);
                 }
             }, 4200);
-
-            // ตรวจสอบ URL Parameter (?mode=mobile) สำหรับการสแกนผ่านมือถือ
-            const params = new URLSearchParams(window.location.search);
-            if (params.get('mode') === 'mobile') {
-                isMobileOnlyMode = true;
-                openMobileCreator(false);
-            }
         };
     </script>
 </body>
